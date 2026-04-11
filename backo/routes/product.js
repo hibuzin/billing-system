@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const Product = require("../models/product");
+
+
 const bwipjs = require('bwip-js');
 const { v4: uuidv4 } = require("uuid");
 

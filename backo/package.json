@@ -9,14 +9,16 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "bwip-js": "^4.9.0",
+    "cloudinary": "^2.9.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "mongoose": "^9.4.1",
     "multer": "^2.1.1",
+    "streamifier": "^0.1.1",
     "uuid": "^13.0.0"
-  }
+  },
+  "description": ""
 }
