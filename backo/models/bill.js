@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const billSchema = new mongoose.Schema({
     items: [
         {
@@ -12,6 +14,6 @@ const billSchema = new mongoose.Schema({
         required: true,
         default: 0
     },
-    
+
     closedAt: Date
 }, { timestamps: true });
