@@ -230,7 +230,7 @@ router.get("/print/:id", auth, async (req, res) => {
 
         // ✅ format receipt
         const receipt = {
-            shopName: "My Super Market",
+            shopName: "AR traters",
             date: new Date().toLocaleString(),
             billId: bill._id,
 
