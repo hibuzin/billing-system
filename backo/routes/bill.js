@@ -53,7 +53,18 @@ router.post("/scan", auth, async (req, res) => {
             return res.status(400).json({ message: "Out of stock" });
         }
 
+        // ✅ decrease stock FIRST (safe)
+        const updatedProduct = await Product.findOneAndUpdate(
+            { _id: product._id, stock: { $gt: 0 } },
+            { $inc: { stock: -1 } },
+            { new: true }
+        );
 
+        if (!updatedProduct) {
+            return res.status(400).json({ message: "Stock update failed" });
+        }
+
+        // ✅ update bill
         const existingItem = bill.items.find(item =>
             item.productId.equals(product._id)
         );
@@ -69,22 +80,15 @@ router.post("/scan", auth, async (req, res) => {
             });
         }
 
-        bill.totalAmount += product.price;
-
-        // decrease stock safely
-        const updatedProduct = await Product.findOneAndUpdate(
-            { _id: product._id, stock: { $gt: 0 } },
-            { $inc: { stock: -1 } },
-            { new: true }
+        // ✅ correct total calculation
+        bill.totalAmount = bill.items.reduce(
+            (sum, item) => sum + item.price * item.qty,
+            0
         );
-
-        if (!updatedProduct) {
-            return res.status(400).json({ message: "Stock update failed" });
-        }
 
         await bill.save();
 
-        // socket emit
+        // ✅ socket
         const io = req.app.get("io");
 
         io.emit("stockUpdated", {
@@ -104,7 +108,6 @@ router.post("/scan", auth, async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
-
 
 
 router.post("/remove-item", auth, async (req, res) => {
@@ -208,6 +211,44 @@ router.get("/:id", auth, async (req, res) => {
         res.json({
             success: true,
             bill
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.get("/print/:id", auth, async (req, res) => {
+    try {
+        const bill = await Bill.findById(req.params.id);
+
+        if (!bill) {
+            return res.status(404).json({
+                message: "Bill not found"
+            });
+        }
+
+        // ✅ format receipt
+        const receipt = {
+            shopName: "My Super Market",
+            date: new Date().toLocaleString(),
+            billId: bill._id,
+
+            items: bill.items.map(item => ({
+                name: item.name,
+                qty: item.qty,
+                price: item.price,
+                total: item.qty * item.price
+            })),
+
+            totalAmount: bill.totalAmount,
+            paymentMethod: bill.paymentMethod || "CASH",
+            status: bill.status
+        };
+
+        res.json({
+            success: true,
+            receipt
         });
 
     } catch (err) {
