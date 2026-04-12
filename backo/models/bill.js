@@ -17,3 +17,5 @@ const billSchema = new mongoose.Schema({
 
     closedAt: Date
 }, { timestamps: true });
+
+module.exports = mongoose.model("Bill", billSchema);

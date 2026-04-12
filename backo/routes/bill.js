@@ -55,7 +55,7 @@ router.post("/scan", auth, async (req, res) => {
             return res.status(400).json({ message: "Out of stock" });
         }
 
-        // ✅ decrease stock FIRST (safe)
+        
         const updatedProduct = await Product.findOneAndUpdate(
             { _id: product._id, stock: { $gt: 0 } },
             { $inc: { stock: -1 } },
@@ -66,7 +66,7 @@ router.post("/scan", auth, async (req, res) => {
             return res.status(400).json({ message: "Stock update failed" });
         }
 
-        // ✅ update bill
+        
         const existingItem = bill.items.find(item =>
             item.productId.equals(product._id)
         );
@@ -82,7 +82,6 @@ router.post("/scan", auth, async (req, res) => {
             });
         }
 
-        // ✅ correct total calculation
         bill.totalAmount = bill.items.reduce(
             (sum, item) => sum + item.price * item.qty,
             0
@@ -90,7 +89,7 @@ router.post("/scan", auth, async (req, res) => {
 
         await bill.save();
 
-        // ✅ socket
+        
         const io = req.app.get("io");
 
         io.emit("stockUpdated", {
