@@ -334,4 +334,89 @@ router.post("/add-product", async (req, res) => {
     }
 });
 
+router.get("/sales/week", async (req, res) => {
+    try {
+        const now = new Date();
+        const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
+        const lastDay = new Date();
+
+        const sales = await Bill.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: firstDay, $lte: lastDay }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: "$totalAmount" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        res.json(sales[0] || { totalSales: 0, count: 0 });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+router.get("/sales/month", async (req, res) => {
+    try {
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date();
+
+        const sales = await Bill.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: firstDay, $lte: lastDay }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: "$totalAmount" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        res.json(sales[0] || { totalSales: 0, count: 0 });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.get("/sales/year", async (req, res) => {
+    try {
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), 0, 1);
+        const lastDay = new Date();
+
+        const sales = await Bill.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: firstDay, $lte: lastDay }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: "$totalAmount" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        res.json(sales[0] || { totalSales: 0, count: 0 });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

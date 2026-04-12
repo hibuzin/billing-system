@@ -1,5 +1,3 @@
-const mongoose = require("mongoose");
-
 const billSchema = new mongoose.Schema({
     items: [
         {
@@ -9,19 +7,11 @@ const billSchema = new mongoose.Schema({
             qty: Number
         }
     ],
-    total: {
+    totalAmount: {
         type: Number,
+        required: true,
         default: 0
     },
-    status: {
-        type: String,
-        default: "OPEN"
-    },
-
-    paymentMethod: String,
-    createdAt: { type: Date, default: Date.now },
-    closedAt: Date
     
+    closedAt: Date
 }, { timestamps: true });
-
-module.exports = mongoose.model("Bill", billSchema);
