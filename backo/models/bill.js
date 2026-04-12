@@ -15,8 +15,13 @@ const billSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        default: "active"
-    }
+        default: "OPEN"
+    },
+
+    paymentMethod: String,
+    createdAt: { type: Date, default: Date.now },
+    closedAt: Date
+    
 }, { timestamps: true });
 
 module.exports = mongoose.model("Bill", billSchema);
