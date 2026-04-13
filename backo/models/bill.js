@@ -15,7 +15,8 @@ const billSchema = new mongoose.Schema({
         default: 0
     },
 
-    closedAt: Date
+    images: [String]
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("Bill", billSchema);
