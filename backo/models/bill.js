@@ -6,7 +6,8 @@ const billSchema = new mongoose.Schema({
             productId: String,
             name: String,
             price: Number,
-            qty: Number
+            qty: Number,
+            image: String
         }
     ],
     totalAmount: {
@@ -15,7 +16,7 @@ const billSchema = new mongoose.Schema({
         default: 0
     },
 
-    images: [String]
+    
 
 }, { timestamps: true });
 

@@ -1,11 +1,39 @@
 const express = require("express");
 const router = express.Router();
-const mongoose = require("mongoose");
 const Bill = require("../models/bill");
 const Product = require("../models/product");
 const auth = require("../middleware/auth");
+const mongoose = require("mongoose");
 
 
+function parseVoice(text) {
+    const words = text.toLowerCase().split(" ");
+    const items = [];
+
+    let nameParts = [];
+
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        const num = Number(word);
+
+        if (!isNaN(num)) {
+            const name = nameParts.join(" ");
+            if (name) {
+                items.push({ name, qty: num });
+            }
+            nameParts = [];
+        } else {
+            nameParts.push(word);
+        }
+    }
+
+    // handle last product (no qty → default 1)
+    if (nameParts.length > 0) {
+        items.push({ name: nameParts.join(" "), qty: 1 });
+    }
+
+    return items;
+}
 
 
 router.post("/start", auth, async (req, res) => {
@@ -365,6 +393,7 @@ router.post("/add-products", async (req, res) => {
                     productId: product._id.toString(),
                     name: product.name,
                     price: product.price,
+                    image: product.images[0],
                     qty: qty
                 });
             }
@@ -386,6 +415,79 @@ router.post("/add-products", async (req, res) => {
         res.json({
             success: true,
             message: " products added ",
+            bill
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+router.post("/voice-add", async (req, res) => {
+    
+    try {
+        
+        const { billId, text } = req.body;
+
+        if (!billId || !text) {
+            return res.status(400).json({
+                message: "billId and text required"
+            });
+        }
+
+        const bill = await Bill.findById(billId);
+        if (!bill) return res.status(404).json({ message: "Bill not found" });
+
+
+        const voiceItems = parseVoice(text);
+
+        for (const vItem of voiceItems) {
+            const product = await Product.findOne({
+                name: { $regex: vItem.name, $options: "i" }
+            });
+
+            if (!product) continue;
+            if (product.stock < vItem.qty) continue;
+
+            const existing = bill.items.find(i =>
+                i.productId.toString() === product._id.toString()
+            );
+
+            if (existing) {
+                existing.qty += vItem.qty;
+
+                if (!existing.image && product.images && product.images.length > 0) {
+                    existing.image = product.images[0];
+                }
+
+            } else {
+                bill.items.push({
+                    productId: product._id.toString(),
+                    name: product.name,
+                    price: product.price,
+                    image: product.images && product.images.length > 0 ? product.images[0] : null,
+
+                    qty: vItem.qty
+                });
+            }
+
+            bill.totalAmount += product.price * vItem.qty;
+
+            await Product.findByIdAndUpdate(
+                product._id,
+                { $inc: { stock: -vItem.qty } }
+            );
+        }
+
+        await bill.save();
+
+        const io = req.app.get("io");
+        io.emit("billUpdated", bill);
+
+        res.json({
+            success: true,
+            message: "Multiple products added via voice",
             bill
         });
 
