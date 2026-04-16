@@ -1,3 +1,4 @@
+
 const mongoose = require("mongoose");
 
 const productSchema = new mongoose.Schema({
@@ -18,10 +19,6 @@ const productSchema = new mongoose.Schema({
         type: Number,
         default: 0,
     },
-    images: {
-        type: [String],
-        default: []
-    }
 
 }, { timestamps: true });
 
@@ -38,4 +35,7 @@ productSchema.virtual("stockStatus").get(function () {
 productSchema.set("toJSON", { virtuals: true });
 productSchema.set("toObject", { virtuals: true });
 
-module.exports = mongoose.model("Product", productSchema);
+
+module.exports =
+    mongoose.models.SupermarketProduct ||
+    mongoose.model("SupermarketProduct", productSchema);

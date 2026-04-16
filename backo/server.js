@@ -7,9 +7,9 @@ const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
 
-const app = express(); // ✅ FIRST create app
+const app = express(); 
 
-const server = http.createServer(app); // ✅ THEN create server
+const server = http.createServer(app); 
 
 // Middleware
 app.use(cors());
@@ -22,19 +22,17 @@ const io = new Server(server, {
     }
 });
 
-// Make io available in routes
+
 app.set("io", io);
 
-// Routes
-const authRoutes = require("./routes/auth");
-const productRoutes = require("./routes/product");
-const orderRoutes = require("./routes/order");
-const billRoutes = require("./routes/bill");
+const restaurantModule = require("./modules/restaurant");
+const supermarketModule = require("./modules/supermarket");
+const retailModule = require("./modules/retail"); 
 
-app.use("/api/auth", authRoutes);
-app.use("/api/product", productRoutes);
-app.use("/api/order", orderRoutes);
-app.use("/api/bill", billRoutes);
+
+app.use("/api/restaurant", restaurantModule);
+app.use("/api/supermarket", supermarketModule);
+app.use("/api/retail", retailModule);
 
 // Test route
 app.get("/", (req, res) => {

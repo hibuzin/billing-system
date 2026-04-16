@@ -2,8 +2,9 @@ const express = require("express");
 const router = express.Router();
 const Bill = require("../models/bill");
 const Product = require("../models/product");
-const auth = require("../middleware/auth");
+const auth = require("../../../middleware/auth");
 const mongoose = require("mongoose");
+const translate = require("@vitalets/google-translate-api");
 
 
 function parseVoice(text) {
@@ -27,14 +28,13 @@ function parseVoice(text) {
         }
     }
 
-    // handle last product (no qty → default 1)
+    // handle last item
     if (nameParts.length > 0) {
         items.push({ name: nameParts.join(" "), qty: 1 });
     }
 
     return items;
 }
-
 
 router.post("/start", auth, async (req, res) => {
     try {
@@ -58,152 +58,7 @@ router.post("/start", auth, async (req, res) => {
 });
 
 
-
-router.post("/scan", async (req, res) => {
-    try {
-        const { billId, barcode } = req.body;
-
-        if (!billId || !barcode) {
-            return res.status(400).json({
-                message: "billId and barcode required"
-            });
-        }
-
-        const bill = await Bill.findById(billId);
-        if (!bill) return res.status(404).json({ message: "Bill not found" });
-
-        if (bill.status !== "OPEN") {
-            return res.status(400).json({ message: "Bill already closed" });
-        }
-
-        const product = await Product.findOne({ barcode });
-        if (!product) return res.status(404).json({ message: "Product not found" });
-
-        if (product.stock <= 0) {
-            return res.status(400).json({ message: "Out of stock" });
-        }
-
-
-        const updatedProduct = await Product.findOneAndUpdate(
-            { _id: product._id, stock: { $gt: 0 } },
-            { $inc: { stock: -1 } },
-            { new: true }
-        );
-
-        if (!updatedProduct) {
-            return res.status(400).json({ message: "Stock update failed" });
-        }
-
-
-        const existingItem = bill.items.find(item =>
-            item.productId.equals(product._id)
-        );
-
-        if (existingItem) {
-            existingItem.qty += 1;
-        } else {
-            bill.items.push({
-                productId: product._id,
-                name: product.name,
-                price: product.price,
-                qty: 1
-            });
-        }
-
-        bill.totalAmount = bill.items.reduce(
-            (sum, item) => sum + item.price * item.qty,
-            0
-        );
-
-        await bill.save();
-
-
-        const io = req.app.get("io");
-
-        io.emit("stockUpdated", {
-            productId: product._id,
-            stock: updatedProduct.stock
-        });
-
-        io.emit("billUpdated", bill);
-
-        res.json({
-            success: true,
-            message: "Product scanned",
-            bill
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-
-router.post("/scan-multiple", async (req, res) => {
-    try {
-
-        const { billId, barcodes } = req.body;
-
-        if (!billId || !Array.isArray(barcodes)) {
-            return res.status(400).json({
-                message: "billId and barcodes array required"
-            });
-        }
-
-        const bill = await Bill.findById(billId);
-        if (!bill) {
-            return res.status(404).json({ message: "Bill not found" });
-        }
-
-        for (const code of barcodes) {
-
-            const product = await Product.findOneAndUpdate(
-                { barcode: code, stock: { $gt: 0 } },
-                { $inc: { stock: -1 } },
-                { new: true }
-            );
-
-            if (!product) continue; // skip if out of stock
-
-            const existingItem = bill.items.find(
-                item => item.productId === product._id.toString()
-            );
-
-            if (existingItem) {
-                existingItem.qty += 1;
-            } else {
-                bill.items.push({
-                    productId: product._id,
-                    name: product.name,
-                    price: Number(product.price) || 0,
-                    qty: 1
-                });
-            }
-        }
-
-
-        bill.totalAmount = bill.items.reduce(
-            (sum, item) => sum + (item.qty || 0) * (item.price || 0),
-            0
-        );
-
-        await bill.save();
-
-        res.json({
-            message: "Bulk scan success",
-            bill: {
-                ...bill.toObject(),
-                total: undefined // remove if exists
-            }
-        });
-
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-
-router.post("/remove-item", async (req, res) => {
+router.post("/remove-item", auth, async (req, res) => {
     try {
         const { billId, productId } = req.body;
 
@@ -260,7 +115,7 @@ router.post("/remove-item", async (req, res) => {
 
 
 
-router.post("/close", async (req, res) => {
+router.post("/close", auth, async (req, res) => {
     try {
         const { billId, paymentMethod } = req.body;
 
@@ -292,8 +147,112 @@ router.post("/close", async (req, res) => {
 });
 
 
+router.get("/top-products", auth, async (req, res) => {
+    try {
+        const min = Number(req.query.min) || 30;
 
-router.get("/:id", async (req, res) => {
+        const result = await Bill.aggregate([
+            { $unwind: "$items" },
+
+            {
+                $group: {
+                    _id: "$items.productId",
+                    name: { $first: "$items.name" },
+                    image: { $first: "$items.image" },
+                    totalSold: { $sum: "$items.qty" }
+                }
+            },
+
+
+            {
+                $match: {
+                    totalSold: { $gte: min }
+                }
+            },
+
+
+            { $sort: { totalSold: -1 } }
+
+
+        ]);
+
+        res.json({
+            success: true,
+            count: result.length,
+            products: result
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+router.get("/low-products", auth, async (req, res) => {
+    try {
+        const max = Number(req.query.max) || 30;     // user input
+        const limit = Number(req.query.limit) || 30; // how many products
+
+        const result = await Product.aggregate([
+            {
+                $lookup: {
+                    from: "bills",
+                    let: { productId: { $toString: "$_id" } },
+                    pipeline: [
+                        { $unwind: "$items" },
+                        {
+                            $match: {
+                                $expr: {
+                                    $eq: ["$items.productId", "$$productId"]
+                                }
+                            }
+                        }
+                    ],
+                    as: "sales"
+                }
+            },
+
+            {
+                $addFields: {
+                    totalSold: {
+                        $sum: "$sales.items.qty"
+                    }
+                }
+            },
+
+
+            {
+                $match: {
+                    $or: [
+                        { totalSold: { $lte: max } },
+                        { totalSold: { $exists: false } }
+                    ]
+                }
+            },
+
+            { $sort: { totalSold: 1 } },
+            { $limit: limit },
+
+            {
+                $project: {
+                    name: 1,
+                    images: 1,
+                    stock: 1,
+                    totalSold: 1
+                }
+            }
+        ]);
+
+        res.json({ success: true, products: result });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+
+router.get("/:id", auth, async (req, res) => {
     try {
         const bill = await Bill.findById(req.params.id);
 
@@ -311,7 +270,7 @@ router.get("/:id", async (req, res) => {
     }
 });
 
-router.get("/print/:id", async (req, res) => {
+router.get("/print/:id", auth, async (req, res) => {
     try {
         const bill = await Bill.findById(req.params.id);
 
@@ -353,7 +312,7 @@ router.get("/print/:id", async (req, res) => {
 });
 
 
-router.post("/add-products", async (req, res) => {
+router.post("/add-products", auth, async (req, res) => {
     try {
         const { billId, items } = req.body;
 
@@ -424,10 +383,10 @@ router.post("/add-products", async (req, res) => {
 });
 
 
-router.post("/voice-add", async (req, res) => {
-    
+router.post("/voice-add", auth, async (req, res) => {
+
     try {
-        
+
         const { billId, text } = req.body;
 
         if (!billId || !text) {
@@ -440,8 +399,11 @@ router.post("/voice-add", async (req, res) => {
         if (!bill) return res.status(404).json({ message: "Bill not found" });
 
 
-        const voiceItems = parseVoice(text);
+        const englishText = await translateToEnglish(text);
 
+        console.log("Translated:", englishText);
+
+        const voiceItems = parseVoice(englishText);
         for (const vItem of voiceItems) {
             const product = await Product.findOne({
                 name: { $regex: vItem.name, $options: "i" }

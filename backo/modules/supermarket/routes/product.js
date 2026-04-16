@@ -1,58 +1,31 @@
 const express = require("express");
 const router = express.Router();
-const mongoose = require("mongoose");
 const Product = require("../models/product");
-const upload = require("../middleware/upload");
-const cloudinary = require("../config/cloudinary");
-const streamifier = require("streamifier");
+const Bill = require("../models/bill");
 
 const bwipjs = require("bwip-js");
 const { v4: uuidv4 } = require("uuid");
-const auth = require("../middleware/auth");
-const { UploadStream } = require("cloudinary");
+const auth = require("../../../middleware/auth");
 
-router.post("/", auth, upload.array("images"), async (req, res) => {
+
+router.post("/", auth, async (req, res) => {
     try {
         const { name, price, stock } = req.body;
 
-        if (!name || !price || !stock) {
+        if (!name || price == null || stock == null) {
             return res.status(400).json({
                 message: "Name, price and stock required"
             });
         }
 
-        const barcode = uuidv4().slice(0, 8);
-
-        let imageUrls = [];
-
-
-        if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
-
-                const uploadFromBuffer = () => {
-                    return new Promise((resolve, reject) => {
-                        const stream = cloudinary.uploader.upload_stream(
-                            { folder: "products" },
-                            (error, result) => {
-                                if (result) resolve(result);
-                                else reject(error);
-                            }
-                        );
-                        streamifier.createReadStream(file.buffer).pipe(stream);
-                    });
-                };
-
-                const result = await uploadFromBuffer();
-                imageUrls.push(result.secure_url);
-            }
-        }
+        const barcode = Date.now().toString();
 
         const product = new Product({
             name,
             price: Number(price),
             stock: Number(stock),
-            barcode,
-            images: imageUrls
+            barcode
+
         });
 
         await product.save();
@@ -68,6 +41,8 @@ router.post("/", auth, upload.array("images"), async (req, res) => {
     }
 });
 
+
+
 router.get("/", async (req, res) => {
     try {
         const products = await Product.find();
@@ -76,10 +51,6 @@ router.get("/", async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
-
-
-
 
 
 router.get("/scan/:barcode", async (req, res) => {
@@ -101,10 +72,12 @@ router.get("/scan/:barcode", async (req, res) => {
 
 
 
-router.put("/:id", auth, upload.array("images"), async (req, res) => {
+
+
+router.put("/:id", auth, async (req, res) => {
     try {
         console.log(req.file);
-        const { name, price, stock, images } = req.body || {};
+        const { name, price, stock } = req.body || {};
 
         if (price !== undefined && price < 0) {
             return res.status(400).json({
@@ -120,13 +93,10 @@ router.put("/:id", auth, upload.array("images"), async (req, res) => {
 
         const updateData = {};
         if (name) updateData.name = name;
-        if (price !== undefined) updateData.price = price;
-        if (stock !== undefined) updateData.stock = stock;
-        if (images !== undefined) { updateData.images = images; }
+        if (price !== undefined) updateData.price = Number(price);
+        if (stock !== undefined) updateData.stock = Number(stock);
 
-        if (req.file) {
-            updateData.images = [req.file.path];
-        }
+
 
         const product = await Product.findByIdAndUpdate(
             req.params.id,
@@ -156,16 +126,18 @@ router.put("/:id", auth, upload.array("images"), async (req, res) => {
 
 router.delete("/:id", auth, async (req, res) => {
     try {
-        await Product.findByIdAndDelete(req.params.id);
+        const product = await Product.findByIdAndDelete(req.params.id);
+
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
         res.json({ message: "Product deleted" });
 
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
-
-
-
 
 router.get("/low-stock", async (req, res) => {
     try {
@@ -217,6 +189,121 @@ router.get("/barcode/:code", async (req, res) => {
     }
 });
 
+router.get("/today/sales", async (req, res) => {
+    try {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+
+        const bills = await Bill.find({
+            createdAt: { $gte: start, $lte: end }
+        });
+
+        const totalSales = bills.reduce(
+            (sum, bill) => sum + bill.totalAmount,
+            0
+        );
+
+        res.json({
+            date: start,
+            totalSales,
+            totalCustomers: bills.length,
+            bills
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+router.get("/sales/week", async (req, res) => {
+    try {
+        const now = new Date();
+        const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
+        const lastDay = new Date();
+
+        const sales = await Bill.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: firstDay, $lte: lastDay }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: "$totalAmount" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        res.json(sales[0] || { totalSales: 0, count: 0 });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+router.get("/sales/month", async (req, res) => {
+    try {
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date();
+
+        const sales = await Bill.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: firstDay, $lte: lastDay }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: "$totalAmount" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        res.json(sales[0] || { totalSales: 0, count: 0 });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.get("/sales/year", async (req, res) => {
+    try {
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), 0, 1);
+        const lastDay = new Date();
+
+        const sales = await Bill.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: firstDay, $lte: lastDay }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: "$totalAmount" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        res.json(sales[0] || { totalSales: 0, count: 0 });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 router.get("/:id", auth, async (req, res) => {
     try {
         const product = await Product.findById(req.params.id);
@@ -239,6 +326,5 @@ router.get("/:id", auth, async (req, res) => {
         });
     }
 });
-
 
 module.exports = router;

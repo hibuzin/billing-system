@@ -16,8 +16,10 @@ const billSchema = new mongoose.Schema({
         default: 0
     },
 
-    
+
 
 }, { timestamps: true });
 
-module.exports = mongoose.model("Bill", billSchema);
+module.exports =
+    mongoose.models.RetailBill ||
+    mongoose.model("RetailBill", billSchema);
