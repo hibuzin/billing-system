@@ -7,9 +7,9 @@ const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
 
-const app = express(); 
+const app = express();
 
-const server = http.createServer(app); 
+const server = http.createServer(app);
 
 // Middleware
 app.use(cors());
@@ -27,21 +27,26 @@ app.set("io", io);
 
 const restaurantModule = require("./modules/restaurant");
 const supermarketModule = require("./modules/supermarket");
-const retailModule = require("./modules/retail"); 
+const retailModule = require("./modules/retail");
 
 
 app.use("/api/restaurant", restaurantModule);
 app.use("/api/supermarket", supermarketModule);
 app.use("/api/retail", retailModule);
 
-// Test route
+
 app.get("/", (req, res) => {
     res.send("API running");
 });
 
-// Socket connection
 io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
+
+    
+    socket.on("join_kitchen", () => {
+        socket.join("kitchen");
+        console.log("Joined kitchen room:", socket.id);
+    });
 
     socket.on("disconnect", () => {
         console.log("User disconnected:", socket.id);

@@ -6,7 +6,7 @@ const upload = require("../../../middleware/upload");
 const cloudinary = require("../../../config/cloudinary");
 const streamifier = require("streamifier");
 
-const auth = require("../../../middleware/auth"); 
+const auth = require("../../../middleware/auth");
 
 
 router.post("/", auth, upload.array("images"), async (req, res) => {
@@ -61,6 +61,38 @@ router.post("/", auth, upload.array("images"), async (req, res) => {
     }
 });
 
+
+router.get("/search", auth, async (req, res) => {
+    try {
+        const { q, limit } = req.query;
+
+        if (!q) {
+            return res.status(400).json({ message: "Search query required" });
+        }
+
+        const products = await Product.find({
+            name: { $regex: q, $options: "i" }
+        })
+        .select("name price stock images")
+        .limit(Number(limit) || 10);
+
+        const formatted = products.map(p => ({
+            productId: p._id,
+            name: p.name,
+            price: p.price,
+            stock: p.stock,
+            image: p.images?.[0] || null
+        }));
+
+        res.json({
+            success: true,
+            products: formatted
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
 
 
 router.get("/low-stock", async (req, res) => {
@@ -152,7 +184,7 @@ router.put("/:id", auth, upload.array("images"), async (req, res) => {
         if (stock !== undefined) updateData.stock = stock;
         if (images !== undefined) updateData.images = images;
 
-       
+
         if (req.files && req.files.length > 0) {
             let imageUrls = [];
 

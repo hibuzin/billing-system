@@ -58,6 +58,92 @@ router.post("/start", auth, async (req, res) => {
 });
 
 
+router.post("/hold", auth, async (req, res) => {
+    try {
+        const { billId, items, note } = req.body;
+
+        if (!billId) {
+            return res.status(400).json({ message: "billId required" });
+        }
+
+        const bill = await Bill.findById(billId);
+
+        if (!bill) {
+            return res.status(404).json({ message: "Bill not found" });
+        }
+
+        if (bill.status !== "OPEN") {
+            return res.status(400).json({ message: "Only OPEN bills can be held" });
+        }
+
+
+        if (Array.isArray(items)) {
+            bill.items = items;
+
+
+            bill.totalAmount = items.reduce(
+                (sum, item) => sum + (item.qty * item.price),
+                0
+            );
+        }
+
+
+        if (note) {
+            bill.note = note;
+        }
+
+
+        bill.status = "HOLD";
+        bill.heldAt = new Date();
+
+        await bill.save();
+
+        const io = req.app.get("io");
+        io.emit("billUpdated", bill);
+
+        res.json({
+            success: true,
+            message: "Bill moved to HOLD",
+            bill
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+router.get("/hold-orders", auth, async (req, res) => {
+    try {
+        const bills = await Bill.find({ status: "HOLD" })
+            .sort({ heldAt: -1 });
+
+        const formatted = bills.map(bill => ({
+            billId: bill._id,
+            totalAmount: bill.totalAmount,
+            itemsCount: bill.items.length,
+            heldAt: bill.heldAt,
+            note: bill.note || null,
+
+            // preview first item
+            preview: bill.items[0]?.name || "No items"
+        }));
+
+        res.json({
+            success: true,
+            count: formatted.length,
+            bills: formatted
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+
+
+
 router.post("/remove-item", auth, async (req, res) => {
     try {
         const { billId, productId } = req.body;
@@ -112,6 +198,7 @@ router.post("/remove-item", auth, async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
+
 
 
 
