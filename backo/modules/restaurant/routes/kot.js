@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const KOT = require("../models/KOT");
+const KOT = require("../models/Kot");
 
 
 router.post("/create", async (req, res) => {
