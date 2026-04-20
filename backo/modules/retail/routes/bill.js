@@ -36,31 +36,10 @@ function parseVoice(text) {
     return items;
 }
 
-router.post("/start", auth, async (req, res) => {
-    try {
-        const bill = new Bill({
-            items: [],
-            totalAmount: 0,
-            status: "OPEN"
-        });
-
-        await bill.save();
-
-        res.json({
-            success: true,
-            message: "Bill started",
-            billId: bill._id
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
 
 router.post("/hold", auth, async (req, res) => {
     try {
-        const { billId,note } = req.body;
+        const { billId, note } = req.body;
 
         if (!billId) {
             return res.status(400).json({ message: "billId required" });
@@ -77,21 +56,9 @@ router.post("/hold", auth, async (req, res) => {
         }
 
 
-        if (Array.isArray(items)) {
-            bill.items = items;
-
-
-            bill.totalAmount = items.reduce(
-                (sum, item) => sum + (item.qty * item.price),
-                0
-            );
-        }
-
-
         if (note) {
             bill.note = note;
         }
-
 
         bill.status = "HOLD";
         bill.heldAt = new Date();
@@ -401,24 +368,38 @@ router.get("/print/:id", auth, async (req, res) => {
 
 router.post("/add-products", auth, async (req, res) => {
     try {
-        const { billId, items } = req.body;
+        let { billId, items } = req.body;
 
-        if (!billId || !Array.isArray(items)) {
+        if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({
-                message: "billId and items array required"
+                message: "items array required"
             });
         }
 
-        const bill = await Bill.findById(billId);
-        if (!bill) {
-            return res.status(404).json({ message: "Bill not found" });
+        let bill;
+
+
+        if (!billId) {
+            bill = new Bill({
+                items: [],
+                totalAmount: 0,
+                status: "ongoing"
+            });
+
+            await bill.save();
+        } else {
+
+            bill = await Bill.findById(billId);
+            if (!bill) {
+                return res.status(404).json({ message: "Bill not found" });
+            }
         }
+
 
         for (const item of items) {
             let { imageName, qty } = item;
 
             qty = Number(qty) || 1;
-
             if (qty <= 0) continue;
 
             const product = await Product.findOne({
@@ -444,7 +425,6 @@ router.post("/add-products", auth, async (req, res) => {
                 });
             }
 
-
             bill.totalAmount += product.price * qty;
 
             await Product.findByIdAndUpdate(
@@ -460,7 +440,8 @@ router.post("/add-products", auth, async (req, res) => {
 
         res.json({
             success: true,
-            message: " products added ",
+            message: "Products added",
+            billId: bill._id, // 🔥 important for frontend
             bill
         });
 
@@ -468,6 +449,8 @@ router.post("/add-products", auth, async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
+
+
 
 
 router.post("/voice-add", auth, async (req, res) => {
@@ -545,6 +528,36 @@ router.post("/voice-add", auth, async (req, res) => {
     }
 });
 
+
+router.get("/get-bill/:billId", auth, async (req, res) => {
+    try {
+        const { billId } = req.params;
+
+        if (!billId) {
+            return res.status(400).json({
+                message: "billId required"
+            });
+        }
+
+        const bill = await Bill.findById(billId);
+
+        if (!bill) {
+            return res.status(404).json({
+                message: "Bill not found"
+            });
+        }
+
+        res.json({
+            success: true,
+            bill
+        });
+
+    } catch (err) {
+        res.status(500).json({
+            message: err.message
+        });
+    }
+});
 
 
 router.get("/today/sales", async (req, res) => {

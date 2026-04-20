@@ -16,7 +16,13 @@ const billSchema = new mongoose.Schema({
         default: 0
     },
 
-
+    status: {
+        type: String,
+        enum: [ "ongoing","OPEN", "HOLD", "CLOSED"],
+        default: "OPEN"
+    },
+    heldAt: Date,
+    note: String
 
 }, { timestamps: true });
 

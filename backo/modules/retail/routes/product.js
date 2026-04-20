@@ -73,8 +73,8 @@ router.get("/search", auth, async (req, res) => {
         const products = await Product.find({
             name: { $regex: q, $options: "i" }
         })
-        .select("name price stock images")
-        .limit(Number(limit) || 10);
+            .select("name price stock images")
+            .limit(Number(limit) || 10);
 
         const formatted = products.map(p => ({
             productId: p._id,
