@@ -60,7 +60,7 @@ router.post("/start", auth, async (req, res) => {
 
 router.post("/hold", auth, async (req, res) => {
     try {
-        const { billId, items, note } = req.body;
+        const { billId,note } = req.body;
 
         if (!billId) {
             return res.status(400).json({ message: "billId required" });
