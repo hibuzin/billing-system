@@ -37,6 +37,343 @@ function parseVoice(text) {
 }
 
 
+
+router.post("/add-products", auth, async (req, res) => {
+    try {
+        let { billId, items } = req.body;
+
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                message: "items array required"
+            });
+        }
+
+        let bill;
+
+
+        if (!billId) {
+            bill = new Bill({
+                items: [],
+                totalAmount: 0,
+                status: "OPEN"
+            });
+
+            await bill.save();
+        } else {
+
+            bill = await Bill.findById(billId);
+
+            if (!bill) {
+                return res.status(404).json({ message: "Bill not found" });
+            }
+
+
+            if (bill.status !== "OPEN") {
+                return res.status(400).json({
+                    message: "Cannot modify CLOSED or HOLD bill"
+                });
+            }
+        }
+
+
+        for (const item of items) {
+            let { imageName, qty } = item;
+
+            qty = Number(qty) || 1;
+            if (qty <= 0) continue;
+
+            const product = await Product.findOne({
+                images: imageName
+            });
+
+            if (!product) {
+                console.log("Product not found:", imageName);
+                continue;
+            }
+
+            if (product.stock < qty) {
+                console.log(" Not enough stock:", product.name);
+                continue;
+            }
+
+            const existing = bill.items.find(i =>
+                i.productId.toString() === product._id.toString()
+            );
+
+            if (existing) {
+                existing.qty += qty;
+            } else {
+                bill.items.push({
+                    productId: product._id.toString(),
+                    name: product.name,
+                    price: product.price,
+                    image: product.images[0],
+                    qty
+                });
+            }
+
+            bill.totalAmount += product.price * qty;
+
+            await Product.findByIdAndUpdate(product._id, {
+                $inc: { stock: -qty }
+            });
+        }
+
+        await bill.save();
+
+        const io = req.app.get("io");
+        io.emit("billUpdated", bill);
+
+        res.json({
+            success: true,
+            billId: bill._id,
+            bill
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+router.put("/update-qty", auth, async (req, res) => {
+    try {
+        const { billId, productId, action } = req.body;
+
+        if (!billId || !productId || !action) {
+            return res.status(400).json({
+                message: "billId, productId, action required"
+            });
+        }
+
+        const bill = await Bill.findById(billId);
+        if (!bill) {
+            return res.status(404).json({ message: "Bill not found" });
+        }
+
+        const item = bill.items.find(i =>
+            i.productId.toString() === productId
+        );
+
+        if (!item) {
+            return res.status(404).json({ message: "Item not found in bill" });
+        }
+
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
+        
+        if (action === "inc") {
+            if (product.stock <= 0) {
+                return res.status(400).json({
+                    message: "Out of stock"
+                });
+            }
+
+            item.qty += 1;
+            bill.totalAmount += product.price;
+
+            await Product.findByIdAndUpdate(productId, {
+                $inc: { stock: -1 }
+            });
+        }
+
+       
+        if (action === "dec") {
+            item.qty -= 1;
+            bill.totalAmount -= product.price;
+
+            await Product.findByIdAndUpdate(productId, {
+                $inc: { stock: +1 }
+            });
+
+            
+            if (item.qty <= 0) {
+                bill.items = bill.items.filter(i =>
+                    i.productId.toString() !== productId
+                );
+            }
+        }
+
+        await bill.save();
+
+        const io = req.app.get("io");
+        io.emit("billUpdated", bill);
+
+        res.json({
+            success: true,
+            message: "Quantity updated",
+            bill
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+
+router.post("/print/:id", auth, async (req, res) => {
+    try {
+        const bill = await Bill.findById(req.params.id);
+
+        if (!bill) {
+            return res.status(404).json({ message: "Bill not found" });
+        }
+
+
+        if (bill.status === "CLOSED") {
+            return res.status(400).json({
+                message: "Bill already closed"
+            });
+        }
+
+
+        if (bill.items.length === 0) {
+            return res.status(400).json({
+                message: "Cannot print empty bill"
+            });
+        }
+
+        const totalAmount = bill.items.reduce(
+            (sum, item) => sum + item.qty * item.price,
+            0
+        );
+
+
+        bill.status = "CLOSED";
+        bill.closedAt = new Date();
+        await bill.save();
+
+        const receipt = {
+            shopName: "AR Traders",
+            date: new Date().toLocaleString(),
+            billId: bill._id,
+            items: bill.items,
+            totalAmount
+        };
+
+        res.json({
+            success: true,
+            receipt
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+
+
+router.post("/voice-add", auth, async (req, res) => {
+
+    try {
+
+        const { billId, text } = req.body;
+
+        if (!billId || !text) {
+            return res.status(400).json({
+                message: "billId and text required"
+            });
+        }
+
+        const bill = await Bill.findById(billId);
+        if (!bill) return res.status(404).json({ message: "Bill not found" });
+
+
+        const englishText = await translateToEnglish(text);
+
+        console.log("Translated:", englishText);
+
+        const voiceItems = parseVoice(englishText);
+        for (const vItem of voiceItems) {
+            const product = await Product.findOne({
+                name: { $regex: vItem.name, $options: "i" }
+            });
+
+            if (!product) continue;
+            if (product.stock < vItem.qty) continue;
+
+            const existing = bill.items.find(i =>
+                i.productId.toString() === product._id.toString()
+            );
+
+            if (existing) {
+                existing.qty += vItem.qty;
+
+                if (!existing.image && product.images && product.images.length > 0) {
+                    existing.image = product.images[0];
+                }
+
+            } else {
+                bill.items.push({
+                    productId: product._id.toString(),
+                    name: product.name,
+                    price: product.price,
+                    image: product.images && product.images.length > 0 ? product.images[0] : null,
+
+                    qty: vItem.qty
+                });
+            }
+
+            bill.totalAmount += product.price * vItem.qty;
+
+            await Product.findByIdAndUpdate(
+                product._id,
+                { $inc: { stock: -vItem.qty } }
+            );
+        }
+
+        await bill.save();
+
+        const io = req.app.get("io");
+        io.emit("billUpdated", bill);
+
+        res.json({
+            success: true,
+            message: "Multiple products added via voice",
+            bill
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+router.get("/get-bill/:billId", auth, async (req, res) => {
+    try {
+        const { billId } = req.params;
+
+        if (!billId) {
+            return res.status(400).json({
+                message: "billId required"
+            });
+        }
+
+        const bill = await Bill.findById(billId);
+
+        if (!bill) {
+            return res.status(404).json({
+                message: "Bill not found"
+            });
+        }
+
+        res.json({
+            success: true,
+            bill
+        });
+
+    } catch (err) {
+        res.status(500).json({
+            message: err.message
+        });
+    }
+});
+
 router.post("/hold", auth, async (req, res) => {
     try {
         const { billId, note } = req.body;
@@ -131,7 +468,7 @@ router.post("/remove-item", auth, async (req, res) => {
         // restore stock + get updated value
         const updatedProduct = await Product.findByIdAndUpdate(
             productId,
-            { $inc: { stock: 1 } },
+            { $inc: { stock: item.qty } },
             { new: true }
         );
 
@@ -301,261 +638,6 @@ router.get("/low-products", auth, async (req, res) => {
 
     } catch (err) {
         res.status(500).json({ message: err.message });
-    }
-});
-
-
-
-router.get("/:id", auth, async (req, res) => {
-    try {
-        const bill = await Bill.findById(req.params.id);
-
-        if (!bill) {
-            return res.status(404).json({ message: "Bill not found" });
-        }
-
-        res.json({
-            success: true,
-            bill
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-router.get("/print/:id", auth, async (req, res) => {
-    try {
-        const bill = await Bill.findById(req.params.id);
-
-        if (!bill) {
-            return res.status(404).json({
-                message: "Bill not found"
-            });
-        }
-
-
-        const totalAmount = bill.items.reduce(
-            (sum, item) => sum + item.qty * item.price,
-            0
-        );
-
-        const receipt = {
-            shopName: "AR traters",
-            date: new Date().toLocaleString(),
-            billId: bill._id,
-
-            items: bill.items.map(item => ({
-                name: item.name,
-                qty: item.qty,
-                price: item.price,
-
-            })),
-
-            totalAmount
-        };
-
-        res.json({
-            success: true,
-            receipt
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-
-router.post("/add-products", auth, async (req, res) => {
-    try {
-        let { billId, items } = req.body;
-
-        if (!Array.isArray(items) || items.length === 0) {
-            return res.status(400).json({
-                message: "items array required"
-            });
-        }
-
-        let bill;
-
-
-        if (!billId) {
-            bill = new Bill({
-                items: [],
-                totalAmount: 0,
-                status: "ongoing"
-            });
-
-            await bill.save();
-        } else {
-
-            bill = await Bill.findById(billId);
-            if (!bill) {
-                return res.status(404).json({ message: "Bill not found" });
-            }
-        }
-
-
-        for (const item of items) {
-            let { imageName, qty } = item;
-
-            qty = Number(qty) || 1;
-            if (qty <= 0) continue;
-
-            const product = await Product.findOne({
-                images: imageName
-            });
-
-            if (!product) continue;
-            if (product.stock < qty) continue;
-
-            const existing = bill.items.find(i =>
-                i.productId.toString() === product._id.toString()
-            );
-
-            if (existing) {
-                existing.qty += qty;
-            } else {
-                bill.items.push({
-                    productId: product._id.toString(),
-                    name: product.name,
-                    price: product.price,
-                    image: product.images[0],
-                    qty: qty
-                });
-            }
-
-            bill.totalAmount += product.price * qty;
-
-            await Product.findByIdAndUpdate(
-                product._id,
-                { $inc: { stock: -qty } }
-            );
-        }
-
-        await bill.save();
-
-        const io = req.app.get("io");
-        io.emit("billUpdated", bill);
-
-        res.json({
-            success: true,
-            message: "Products added",
-            billId: bill._id, // 🔥 important for frontend
-            bill
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-
-
-
-router.post("/voice-add", auth, async (req, res) => {
-
-    try {
-
-        const { billId, text } = req.body;
-
-        if (!billId || !text) {
-            return res.status(400).json({
-                message: "billId and text required"
-            });
-        }
-
-        const bill = await Bill.findById(billId);
-        if (!bill) return res.status(404).json({ message: "Bill not found" });
-
-
-        const englishText = await translateToEnglish(text);
-
-        console.log("Translated:", englishText);
-
-        const voiceItems = parseVoice(englishText);
-        for (const vItem of voiceItems) {
-            const product = await Product.findOne({
-                name: { $regex: vItem.name, $options: "i" }
-            });
-
-            if (!product) continue;
-            if (product.stock < vItem.qty) continue;
-
-            const existing = bill.items.find(i =>
-                i.productId.toString() === product._id.toString()
-            );
-
-            if (existing) {
-                existing.qty += vItem.qty;
-
-                if (!existing.image && product.images && product.images.length > 0) {
-                    existing.image = product.images[0];
-                }
-
-            } else {
-                bill.items.push({
-                    productId: product._id.toString(),
-                    name: product.name,
-                    price: product.price,
-                    image: product.images && product.images.length > 0 ? product.images[0] : null,
-
-                    qty: vItem.qty
-                });
-            }
-
-            bill.totalAmount += product.price * vItem.qty;
-
-            await Product.findByIdAndUpdate(
-                product._id,
-                { $inc: { stock: -vItem.qty } }
-            );
-        }
-
-        await bill.save();
-
-        const io = req.app.get("io");
-        io.emit("billUpdated", bill);
-
-        res.json({
-            success: true,
-            message: "Multiple products added via voice",
-            bill
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-
-router.get("/get-bill/:billId", auth, async (req, res) => {
-    try {
-        const { billId } = req.params;
-
-        if (!billId) {
-            return res.status(400).json({
-                message: "billId required"
-            });
-        }
-
-        const bill = await Bill.findById(billId);
-
-        if (!bill) {
-            return res.status(404).json({
-                message: "Bill not found"
-            });
-        }
-
-        res.json({
-            success: true,
-            bill
-        });
-
-    } catch (err) {
-        res.status(500).json({
-            message: err.message
-        });
     }
 });
 
