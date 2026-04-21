@@ -78,21 +78,15 @@ router.post("/add-products", auth, async (req, res) => {
 
         for (const item of items) {
             let { imageName, qty } = item;
-
             qty = Number(qty) || 1;
-            if (qty <= 0) continue;
 
-            const product = await Product.findOne({
-                images: imageName
-            });
+            
+
+            const product = await Product.findOne({ images: imageName });
+
 
             if (!product) {
-                console.log("Product not found:", imageName);
-                continue;
-            }
-
-            if (product.stock < qty) {
-                console.log(" Not enough stock:", product.name);
+                console.log("Product not found, skipping");
                 continue;
             }
 
@@ -164,7 +158,7 @@ router.put("/update-qty", auth, async (req, res) => {
             return res.status(404).json({ message: "Product not found" });
         }
 
-        
+
         if (action === "inc") {
             if (product.stock <= 0) {
                 return res.status(400).json({
@@ -180,7 +174,7 @@ router.put("/update-qty", auth, async (req, res) => {
             });
         }
 
-       
+
         if (action === "dec") {
             item.qty -= 1;
             bill.totalAmount -= product.price;
@@ -189,7 +183,7 @@ router.put("/update-qty", auth, async (req, res) => {
                 $inc: { stock: +1 }
             });
 
-            
+
             if (item.qty <= 0) {
                 bill.items = bill.items.filter(i =>
                     i.productId.toString() !== productId
