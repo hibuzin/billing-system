@@ -75,6 +75,8 @@ router.post("/add-products", auth, async (req, res) => {
             }
         }
 
+        const stockUpdates = [];
+
 
         for (const item of items) {
             let { productId, qty } = item;
@@ -141,7 +143,7 @@ router.put("/update-qty", auth, async (req, res) => {
             });
         }
 
-        
+
         const bill = await Bill.findById(billId);
 
         if (!bill) {
@@ -152,7 +154,7 @@ router.put("/update-qty", auth, async (req, res) => {
 
         console.log("Bill loaded:", bill._id);
 
-       
+
         const itemIndex = bill.items.findIndex(
             (i) => i.productId && i.productId.toString() === productId
         );
@@ -165,14 +167,14 @@ router.put("/update-qty", auth, async (req, res) => {
 
         const item = bill.items[itemIndex];
 
-        
+
         if (action === "inc") {
             item.qty += 1;
         } else if (action === "dec") {
             item.qty -= 1;
 
             if (item.qty <= 0) {
-                bill.items.splice(itemIndex, 1); 
+                bill.items.splice(itemIndex, 1);
             }
         } else {
             return res.status(400).json({
@@ -180,7 +182,7 @@ router.put("/update-qty", auth, async (req, res) => {
             });
         }
 
-        
+
         bill.totalAmount = bill.items.reduce(
             (sum, i) => sum + i.price * i.qty,
             0
