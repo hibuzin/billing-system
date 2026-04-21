@@ -3,7 +3,11 @@ const mongoose = require("mongoose");
 const billSchema = new mongoose.Schema({
     items: [
         {
-            productId: String,
+            productId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "Product",
+                required: true
+            },
             name: String,
             price: Number,
             qty: Number,
@@ -18,7 +22,7 @@ const billSchema = new mongoose.Schema({
 
     status: {
         type: String,
-        enum: [ "OPEN", "HOLD", "CLOSED"],
+        enum: ["OPEN", "HOLD", "CLOSED"],
         default: "OPEN"
     },
     heldAt: Date,

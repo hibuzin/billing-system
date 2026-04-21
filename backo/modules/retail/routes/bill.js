@@ -77,13 +77,12 @@ router.post("/add-products", auth, async (req, res) => {
 
 
         for (const item of items) {
-            let { imageName, qty } = item;
+            let { productId, qty } = item;
             qty = Number(qty) || 1;
 
-            
+            if (!productId) continue;
 
-            const product = await Product.findOne({ images: imageName });
-
+            const product = await Product.findById(productId);
 
             if (!product) {
                 console.log("Product not found, skipping");
@@ -91,22 +90,24 @@ router.post("/add-products", auth, async (req, res) => {
             }
 
             const existing = bill.items.find(i =>
-                i.productId.toString() === product._id.toString()
+                i.productId?.toString() === productId?.toString()
             );
 
             if (existing) {
                 existing.qty += qty;
             } else {
                 bill.items.push({
-                    productId: product._id.toString(),
+                    productId: product._id,
                     name: product.name,
                     price: product.price,
-                    image: product.images[0],
+                    image: product.images?.[0],
                     qty
                 });
             }
 
-            bill.totalAmount += product.price * qty;
+            bill.totalAmount = bill.items.reduce((sum, i) => {
+                return sum + (i.price * i.qty);
+            }, 0);
 
             await Product.findByIdAndUpdate(product._id, {
                 $inc: { stock: -qty }
@@ -140,70 +141,65 @@ router.put("/update-qty", auth, async (req, res) => {
             });
         }
 
+        
         const bill = await Bill.findById(billId);
+
         if (!bill) {
-            return res.status(404).json({ message: "Bill not found" });
+            return res.status(404).json({
+                message: "Bill not found"
+            });
         }
 
-        const item = bill.items.find(i =>
-            i.productId.toString() === productId
+        console.log("Bill loaded:", bill._id);
+
+       
+        const itemIndex = bill.items.findIndex(
+            (i) => i.productId && i.productId.toString() === productId
         );
 
-        if (!item) {
-            return res.status(404).json({ message: "Item not found in bill" });
+        if (itemIndex === -1) {
+            return res.status(404).json({
+                message: "Item not found in bill"
+            });
         }
 
-        const product = await Product.findById(productId);
-        if (!product) {
-            return res.status(404).json({ message: "Product not found" });
-        }
+        const item = bill.items[itemIndex];
 
-
+        
         if (action === "inc") {
-            if (product.stock <= 0) {
-                return res.status(400).json({
-                    message: "Out of stock"
-                });
-            }
-
             item.qty += 1;
-            bill.totalAmount += product.price;
-
-            await Product.findByIdAndUpdate(productId, {
-                $inc: { stock: -1 }
-            });
-        }
-
-
-        if (action === "dec") {
+        } else if (action === "dec") {
             item.qty -= 1;
-            bill.totalAmount -= product.price;
-
-            await Product.findByIdAndUpdate(productId, {
-                $inc: { stock: +1 }
-            });
-
 
             if (item.qty <= 0) {
-                bill.items = bill.items.filter(i =>
-                    i.productId.toString() !== productId
-                );
+                bill.items.splice(itemIndex, 1); 
             }
+        } else {
+            return res.status(400).json({
+                message: "Invalid action (use inc or dec)"
+            });
         }
+
+        
+        bill.totalAmount = bill.items.reduce(
+            (sum, i) => sum + i.price * i.qty,
+            0
+        );
 
         await bill.save();
 
-        const io = req.app.get("io");
-        io.emit("billUpdated", bill);
-
-        res.json({
+        return res.status(200).json({
             success: true,
-            message: "Quantity updated",
+            message: "Quantity updated successfully",
             bill
         });
 
-    } catch (err) {
-        res.status(500).json({ message: err.message });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            message: "Server error",
+            error: error.message
+        });
     }
 });
 
