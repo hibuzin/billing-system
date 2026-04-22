@@ -438,8 +438,6 @@ router.get("/hold-orders", auth, async (req, res) => {
 
 
 
-
-
 router.post("/remove-item", auth, async (req, res) => {
     try {
         const { billId, productId } = req.body;
@@ -634,7 +632,7 @@ router.get("/low-products", auth, async (req, res) => {
 });
 
 
-router.get("/today/sales", async (req, res) => {
+router.get("/sales/today", async (req, res) => {
     try {
         const start = new Date();
         start.setHours(0, 0, 0, 0);
@@ -642,24 +640,33 @@ router.get("/today/sales", async (req, res) => {
         const end = new Date();
         end.setHours(23, 59, 59, 999);
 
-        const bills = await Bill.find({
-            createdAt: { $gte: start, $lte: end }
-        });
+        const result = await Bill.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: start, $lte: end }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: "$totalAmount" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
 
-        const totalSales = bills.reduce(
-            (sum, bill) => sum + bill.totalAmount,
-            0
-        );
+        const stats = result[0] || { totalSales: 0, count: 0 };
 
         res.json({
-            date: start,
-            totalSales,
-            totalCustomers: bills.length,
-            bills
+            success: true,
+            data: {
+                totalSales: stats.totalSales,
+                totalBills: stats.count
+            }
         });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
@@ -667,10 +674,15 @@ router.get("/today/sales", async (req, res) => {
 router.get("/sales/week", async (req, res) => {
     try {
         const now = new Date();
-        const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
-        const lastDay = new Date();
 
-        const sales = await Bill.aggregate([
+        const firstDay = new Date(now);
+        firstDay.setDate(now.getDate() - now.getDay());
+        firstDay.setHours(0, 0, 0, 0);
+
+        const lastDay = new Date();
+        lastDay.setHours(23, 59, 59, 999);
+
+        const result = await Bill.aggregate([
             {
                 $match: {
                     createdAt: { $gte: firstDay, $lte: lastDay }
@@ -685,13 +697,20 @@ router.get("/sales/week", async (req, res) => {
             }
         ]);
 
-        res.json(sales[0] || { totalSales: 0, count: 0 });
+        const stats = result[0] || { totalSales: 0, count: 0 };
+
+        res.json({
+            success: true,
+            data: {
+                totalSales: stats.totalSales,
+                totalBills: stats.count
+            }
+        });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ success: false, message: err.message });
     }
 });
-
 
 router.get("/sales/month", async (req, res) => {
     try {
