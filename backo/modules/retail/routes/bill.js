@@ -239,30 +239,46 @@ router.put("/update-qty", auth, async (req, res) => {
     try {
         const { billId, productId, action } = req.body;
 
+
         if (!billId || !productId || !action) {
             return res.status(400).json({
-                message: "billId, productId, action required"
+                success: false,
+                message: "billId, productId and action are required"
+            });
+        }
+
+        if (!["inc", "dec"].includes(action)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid action (use 'inc' or 'dec')"
             });
         }
 
 
         const bill = await Bill.findById(billId);
-
         if (!bill) {
             return res.status(404).json({
+                success: false,
                 message: "Bill not found"
             });
         }
 
-        console.log("Bill loaded:", bill._id);
+
+        if (bill.status !== "OPEN") {
+            return res.status(400).json({
+                success: false,
+                message: "Cannot modify CLOSED or HOLD bill"
+            });
+        }
 
 
         const itemIndex = bill.items.findIndex(
-            (i) => i.productId && i.productId.toString() === productId
+            i => i.productId.toString() === productId
         );
 
         if (itemIndex === -1) {
             return res.status(404).json({
+                success: false,
                 message: "Item not found in bill"
             });
         }
@@ -270,18 +286,52 @@ router.put("/update-qty", auth, async (req, res) => {
         const item = bill.items[itemIndex];
 
 
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        let newStock;
+
+        // ➕ increase qty
         if (action === "inc") {
+            if (product.stock <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Out of stock"
+                });
+            }
+
             item.qty += 1;
-        } else if (action === "dec") {
+
+            const updatedProduct = await Product.findOneAndUpdate(
+                { _id: productId },
+                { $inc: { stock: -1 } },
+                { returnDocument: "after" }
+            );
+
+            newStock = updatedProduct.stock;
+        }
+
+
+        if (action === "dec") {
             item.qty -= 1;
+
+            const updatedProduct = await Product.findByIdAndUpdate(
+                productId,
+                { $inc: { stock: 1 } },
+                { new: true }
+            );
+
+            newStock = updatedProduct.stock;
+
 
             if (item.qty <= 0) {
                 bill.items.splice(itemIndex, 1);
             }
-        } else {
-            return res.status(400).json({
-                message: "Invalid action (use inc or dec)"
-            });
         }
 
 
@@ -292,22 +342,33 @@ router.put("/update-qty", auth, async (req, res) => {
 
         await bill.save();
 
+
+        const io = req.app.get("io");
+        if (io) {
+            io.emit("stockUpdated", { productId, stock: newStock });
+            io.emit("billUpdated", bill);
+        }
+
         return res.status(200).json({
             success: true,
             message: "Quantity updated successfully",
-            bill
+            data: {
+                billId: bill._id,
+                productId,
+                action,
+                bill
+            }
         });
 
     } catch (error) {
         console.error(error);
         return res.status(500).json({
+            success: false,
             message: "Server error",
             error: error.message
         });
     }
 });
-
-
 
 router.post("/print/:id", auth, async (req, res) => {
     try {
@@ -361,7 +422,7 @@ router.post("/print/:id", auth, async (req, res) => {
 
 router.post("/repeat-last-bill", auth, async (req, res) => {
     try {
-        
+
         const lastBill = await Bill.findOne({ status: "CLOSED" })
             .sort({ createdAt: -1 });
 
@@ -390,14 +451,14 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
 
             if (!product) continue;
 
-            
+
             if (product.stock < item.qty) {
                 return res.status(400).json({
                     message: `Not enough stock for ${product.name}`
                 });
             }
 
-            
+
             newBill.items.push({
                 productId: product._id,
                 name: product.name,
@@ -406,7 +467,7 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
                 qty: item.qty
             });
 
-            
+
             const updatedProduct = await Product.findByIdAndUpdate(
                 product._id,
                 { $inc: { stock: -item.qty } },
@@ -419,7 +480,7 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
             });
         }
 
-        
+
         newBill.totalAmount = newBill.items.reduce((sum, i) => {
             return sum + i.price * i.qty;
         }, 0);

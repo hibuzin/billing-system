@@ -10,7 +10,7 @@ const auth = require("../../../middleware/auth");
 
 router.post("/", auth, async (req, res) => {
     try {
-        const { name, price, stock } = req.body;
+        const { name, price, stock, barcodeCount } = req.body;
 
         if (!name || price == null || stock == null) {
             return res.status(400).json({
@@ -18,20 +18,33 @@ router.post("/", auth, async (req, res) => {
             });
         }
 
-        const barcode = Date.now().toString();
+        
+        const count = Number(barcodeCount) || 1;
+
+        if (count <= 0) {
+            return res.status(400).json({
+                message: "barcodeCount must be greater than 0"
+            });
+        }
+
+        
+        const barcodes = [];
+        for (let i = 0; i < count; i++) {
+            barcodes.push(Date.now().toString() + i);
+        }
 
         const product = new Product({
             name,
             price: Number(price),
             stock: Number(stock),
-            barcode
-
+            barcodes // array instead of single
         });
 
         await product.save();
 
         res.json({
             success: true,
+            totalBarcodes: barcodes.length,
             product
         });
 
