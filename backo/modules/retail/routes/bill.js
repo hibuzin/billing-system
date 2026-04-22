@@ -359,17 +359,22 @@ router.post("/print/:id", auth, async (req, res) => {
     }
 });
 
-
-router.post("/repeat-bill/:id", auth, async (req, res) => {
+router.post("/repeat-last-bill", auth, async (req, res) => {
     try {
-        const oldBill = await Bill.findById(req.params.id);
+        
+        const lastBill = await Bill.findOne({ status: "CLOSED" })
+            .sort({ createdAt: -1 });
 
-        if (!oldBill) {
-            return res.status(404).json({ message: "Original bill not found" });
+        if (!lastBill) {
+            return res.status(404).json({
+                message: "No previous bill found"
+            });
         }
 
-        if (!oldBill.items || oldBill.items.length === 0) {
-            return res.status(400).json({ message: "Bill has no items" });
+        if (!lastBill.items || lastBill.items.length === 0) {
+            return res.status(400).json({
+                message: "Last bill has no items"
+            });
         }
 
         const newBill = new Bill({
@@ -378,7 +383,9 @@ router.post("/repeat-bill/:id", auth, async (req, res) => {
             status: "OPEN"
         });
 
-        for (const item of oldBill.items) {
+        const io = req.app.get("io");
+
+        for (const item of lastBill.items) {
             const product = await Product.findById(item.productId);
 
             if (!product) continue;
@@ -400,8 +407,15 @@ router.post("/repeat-bill/:id", auth, async (req, res) => {
             });
 
             
-            await Product.findByIdAndUpdate(product._id, {
-                $inc: { stock: -item.qty }
+            const updatedProduct = await Product.findByIdAndUpdate(
+                product._id,
+                { $inc: { stock: -item.qty } },
+                { new: true }
+            );
+
+            io.emit("stockUpdated", {
+                productId: product._id,
+                stock: updatedProduct.stock
             });
         }
 
@@ -412,12 +426,11 @@ router.post("/repeat-bill/:id", auth, async (req, res) => {
 
         await newBill.save();
 
-        const io = req.app.get("io");
         io.emit("billUpdated", newBill);
 
         res.json({
             success: true,
-            message: "Bill repeated successfully",
+            message: "Last bill repeated successfully",
             billId: newBill._id,
             bill: newBill
         });
@@ -426,7 +439,6 @@ router.post("/repeat-bill/:id", auth, async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
-
 
 
 router.post("/voice-add", auth, async (req, res) => {
