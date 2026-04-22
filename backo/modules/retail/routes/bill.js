@@ -657,19 +657,11 @@ router.get("/sales/today", async (req, res) => {
 
         const stats = result[0] || { totalSales: 0, count: 0 };
 
-        const toIST = (date) =>
-            new Date(date).toLocaleString("en-IN", {
-                timeZone: "Asia/Kolkata"
-            });
-
         res.json({
             success: true,
             data: {
                 totalSales: stats.totalSales,
-                totalBills: stats.count,
-                from: toIST(firstDay),
-                to: toIST(lastDay),
-
+                totalBills: stats.count
             }
         });
 
@@ -677,7 +669,6 @@ router.get("/sales/today", async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 });
-
 
 router.get("/sales/week", async (req, res) => {
     try {
