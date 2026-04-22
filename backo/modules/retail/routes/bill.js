@@ -171,7 +171,7 @@ router.put("/update-products", auth, async (req, res) => {
                 i => i.productId.toString() === productId.toString()
             );
 
-           
+
             if (qty === 0) {
                 if (existing) {
                     // restore stock
@@ -186,19 +186,19 @@ router.put("/update-products", auth, async (req, res) => {
                 continue;
             }
 
-            
+
             if (existing) {
                 const diff = qty - existing.qty;
 
                 existing.qty = qty;
 
-                
+
                 await Product.findByIdAndUpdate(productId, {
                     $inc: { stock: -diff }
                 });
 
             } else {
-                
+
                 bill.items.push({
                     productId: product._id,
                     name: product.name,
@@ -213,7 +213,7 @@ router.put("/update-products", auth, async (req, res) => {
             }
         }
 
-        
+
         bill.totalAmount = bill.items.reduce((sum, i) => {
             return sum + i.price * i.qty;
         }, 0);
@@ -359,6 +359,73 @@ router.post("/print/:id", auth, async (req, res) => {
     }
 });
 
+
+router.post("/repeat-bill/:id", auth, async (req, res) => {
+    try {
+        const oldBill = await Bill.findById(req.params.id);
+
+        if (!oldBill) {
+            return res.status(404).json({ message: "Original bill not found" });
+        }
+
+        if (!oldBill.items || oldBill.items.length === 0) {
+            return res.status(400).json({ message: "Bill has no items" });
+        }
+
+        const newBill = new Bill({
+            items: [],
+            totalAmount: 0,
+            status: "OPEN"
+        });
+
+        for (const item of oldBill.items) {
+            const product = await Product.findById(item.productId);
+
+            if (!product) continue;
+
+            
+            if (product.stock < item.qty) {
+                return res.status(400).json({
+                    message: `Not enough stock for ${product.name}`
+                });
+            }
+
+            
+            newBill.items.push({
+                productId: product._id,
+                name: product.name,
+                price: product.price,
+                image: product.images?.[0],
+                qty: item.qty
+            });
+
+            
+            await Product.findByIdAndUpdate(product._id, {
+                $inc: { stock: -item.qty }
+            });
+        }
+
+        
+        newBill.totalAmount = newBill.items.reduce((sum, i) => {
+            return sum + i.price * i.qty;
+        }, 0);
+
+        await newBill.save();
+
+        const io = req.app.get("io");
+        io.emit("billUpdated", newBill);
+
+        res.json({
+            success: true,
+            message: "Bill repeated successfully",
+            billId: newBill._id,
+            bill: newBill
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
 
 
 
