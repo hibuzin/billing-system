@@ -133,6 +133,108 @@ router.post("/add-products", auth, async (req, res) => {
 });
 
 
+router.put("/update-products", auth, async (req, res) => {
+    try {
+        const { billId, items } = req.body;
+
+        if (!billId) {
+            return res.status(400).json({ message: "billId required" });
+        }
+
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ message: "items array required" });
+        }
+
+        const bill = await Bill.findById(billId);
+
+        if (!bill) {
+            return res.status(404).json({ message: "Bill not found" });
+        }
+
+        if (bill.status !== "OPEN") {
+            return res.status(400).json({
+                message: "Cannot modify CLOSED or HOLD bill"
+            });
+        }
+
+        for (const item of items) {
+            let { productId, qty } = item;
+
+            if (!productId) continue;
+
+            qty = Number(qty);
+
+            const product = await Product.findById(productId);
+            if (!product) continue;
+
+            const existing = bill.items.find(
+                i => i.productId.toString() === productId.toString()
+            );
+
+           
+            if (qty === 0) {
+                if (existing) {
+                    // restore stock
+                    await Product.findByIdAndUpdate(productId, {
+                        $inc: { stock: existing.qty }
+                    });
+
+                    bill.items = bill.items.filter(
+                        i => i.productId.toString() !== productId.toString()
+                    );
+                }
+                continue;
+            }
+
+            
+            if (existing) {
+                const diff = qty - existing.qty;
+
+                existing.qty = qty;
+
+                
+                await Product.findByIdAndUpdate(productId, {
+                    $inc: { stock: -diff }
+                });
+
+            } else {
+                
+                bill.items.push({
+                    productId: product._id,
+                    name: product.name,
+                    price: product.price,
+                    image: product.images?.[0],
+                    qty
+                });
+
+                await Product.findByIdAndUpdate(productId, {
+                    $inc: { stock: -qty }
+                });
+            }
+        }
+
+        
+        bill.totalAmount = bill.items.reduce((sum, i) => {
+            return sum + i.price * i.qty;
+        }, 0);
+
+        await bill.save();
+
+        const io = req.app.get("io");
+        io.emit("billUpdated", bill);
+
+        res.json({
+            success: true,
+            message: "Bill updated successfully",
+            bill
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
 router.put("/update-qty", auth, async (req, res) => {
     try {
         const { billId, productId, action } = req.body;
@@ -437,95 +539,6 @@ router.get("/hold-orders", auth, async (req, res) => {
 });
 
 
-
-router.post("/remove-item", auth, async (req, res) => {
-    try {
-        const { billId, productId } = req.body;
-
-        const bill = await Bill.findById(billId);
-        if (!bill) return res.status(404).json({ message: "Bill not found" });
-
-        const itemIndex = bill.items.findIndex(
-            i => i.productId.toString() === productId
-        );
-
-        if (itemIndex === -1) {
-            return res.status(404).json({ message: "Item not found" });
-        }
-
-        const item = bill.items[itemIndex];
-
-        // restore stock + get updated value
-        const updatedProduct = await Product.findByIdAndUpdate(
-            productId,
-            { $inc: { stock: item.qty } },
-            { new: true }
-        );
-
-        const io = req.app.get("io");
-
-        io.emit("stockUpdated", {
-            productId,
-            stock: updatedProduct.stock
-        });
-
-        // update bill
-        if (item.qty > 1) {
-            item.qty -= 1;
-        } else {
-            bill.items.splice(itemIndex, 1);
-        }
-
-        bill.totalAmount -= item.price;
-
-        await bill.save();
-
-        io.emit("billUpdated", bill);
-
-        res.json({
-            success: true,
-            message: "Item updated",
-            bill
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-
-
-
-router.post("/close", auth, async (req, res) => {
-    try {
-        const { billId, paymentMethod } = req.body;
-
-        const bill = await Bill.findById(billId);
-        if (!bill) return res.status(404).json({ message: "Bill not found" });
-
-        if (bill.status !== "OPEN") {
-            return res.status(400).json({ message: "Bill already closed" });
-        }
-
-        bill.status = "CLOSED";
-        bill.paymentMethod = paymentMethod || "CASH";
-        bill.closedAt = new Date();
-
-        await bill.save();
-
-        const io = req.app.get("io");
-        io.emit("billUpdated", bill);
-
-        res.json({
-            success: true,
-            message: "Bill closed",
-            bill
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
 
 
 router.get("/top-products", auth, async (req, res) => {
