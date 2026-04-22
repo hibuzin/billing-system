@@ -657,11 +657,19 @@ router.get("/sales/today", async (req, res) => {
 
         const stats = result[0] || { totalSales: 0, count: 0 };
 
+        const toIST = (date) =>
+            new Date(date).toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata"
+            });
+
         res.json({
             success: true,
             data: {
                 totalSales: stats.totalSales,
-                totalBills: stats.count
+                totalBills: stats.count,
+                from: toIST(firstDay),
+                to: toIST(lastDay),
+
             }
         });
 
@@ -699,11 +707,18 @@ router.get("/sales/week", async (req, res) => {
 
         const stats = result[0] || { totalSales: 0, count: 0 };
 
+        const toIST = (date) =>
+            new Date(date).toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata"
+            });
+
         res.json({
             success: true,
             data: {
                 totalSales: stats.totalSales,
-                totalBills: stats.count
+                totalBills: stats.count,
+                from: toIST(firstDay),
+                to: toIST(lastDay),
             }
         });
 
@@ -715,10 +730,16 @@ router.get("/sales/week", async (req, res) => {
 router.get("/sales/month", async (req, res) => {
     try {
         const now = new Date();
-        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-        const lastDay = new Date();
 
-        const sales = await Bill.aggregate([
+        // Start of month
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        firstDay.setHours(0, 0, 0, 0);
+
+        // End of today (or you can use end of month if needed)
+        const lastDay = new Date();
+        lastDay.setHours(23, 59, 59, 999);
+
+        const result = await Bill.aggregate([
             {
                 $match: {
                     createdAt: { $gte: firstDay, $lte: lastDay }
@@ -728,25 +749,49 @@ router.get("/sales/month", async (req, res) => {
                 $group: {
                     _id: null,
                     totalSales: { $sum: "$totalAmount" },
-                    count: { $sum: 1 }
+                    totalBills: { $sum: 1 }
                 }
             }
         ]);
 
-        res.json(sales[0] || { totalSales: 0, count: 0 });
+        const stats = result[0] || { totalSales: 0, totalBills: 0 };
+
+        const toIST = (date) =>
+            new Date(date).toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata"
+            });
+
+        res.json({
+            success: true,
+            data: {
+                totalSales: stats.totalSales,
+                totalBills: stats.count,
+                from: toIST(firstDay),
+                to: toIST(lastDay),
+            }
+        });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({
+            success: false,
+            message: err.message
+        });
     }
 });
 
 router.get("/sales/year", async (req, res) => {
     try {
         const now = new Date();
-        const firstDay = new Date(now.getFullYear(), 0, 1);
-        const lastDay = new Date();
 
-        const sales = await Bill.aggregate([
+        // Start of year
+        const firstDay = new Date(now.getFullYear(), 0, 1);
+        firstDay.setHours(0, 0, 0, 0);
+
+        // End of today (or full year option below)
+        const lastDay = new Date();
+        lastDay.setHours(23, 59, 59, 999);
+
+        const result = await Bill.aggregate([
             {
                 $match: {
                     createdAt: { $gte: firstDay, $lte: lastDay }
@@ -756,15 +801,33 @@ router.get("/sales/year", async (req, res) => {
                 $group: {
                     _id: null,
                     totalSales: { $sum: "$totalAmount" },
-                    count: { $sum: 1 }
+                    totalBills: { $sum: 1 }
                 }
             }
         ]);
 
-        res.json(sales[0] || { totalSales: 0, count: 0 });
+        const stats = result[0] || { totalSales: 0, totalBills: 0 };
+
+        const toIST = (date) =>
+            new Date(date).toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata"
+            });
+
+        res.json({
+            success: true,
+            data: {
+                totalSales: stats.totalSales,
+                totalBills: stats.count,
+                from: toIST(firstDay),
+                to: toIST(lastDay),
+            }
+        });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({
+            success: false,
+            message: err.message
+        });
     }
 });
 
