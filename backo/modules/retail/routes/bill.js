@@ -28,7 +28,7 @@ function parseVoice(text) {
         }
     }
 
-    // handle last item
+
     if (nameParts.length > 0) {
         items.push({ name: nameParts.join(" "), qty: 1 });
     }
@@ -50,7 +50,6 @@ router.post("/add-products", auth, async (req, res) => {
 
         let bill;
 
-
         if (!billId) {
             bill = new Bill({
                 items: [],
@@ -60,13 +59,11 @@ router.post("/add-products", auth, async (req, res) => {
 
             await bill.save();
         } else {
-
             bill = await Bill.findById(billId);
 
             if (!bill) {
                 return res.status(404).json({ message: "Bill not found" });
             }
-
 
             if (bill.status !== "OPEN") {
                 return res.status(400).json({
@@ -75,9 +72,6 @@ router.post("/add-products", auth, async (req, res) => {
             }
         }
 
-        const stockUpdates = [];
-
-
         for (const item of items) {
             let { productId, qty } = item;
             qty = Number(qty) || 1;
@@ -85,14 +79,10 @@ router.post("/add-products", auth, async (req, res) => {
             if (!productId) continue;
 
             const product = await Product.findById(productId);
-
-            if (!product) {
-                console.log("Product not found, skipping");
-                continue;
-            }
+            if (!product) continue;
 
             const existing = bill.items.find(i =>
-                i.productId?.toString() === productId?.toString()
+                i.productId?.toString() === productId.toString()
             );
 
             if (existing) {
@@ -106,15 +96,13 @@ router.post("/add-products", auth, async (req, res) => {
                     qty
                 });
             }
-
-            bill.totalAmount = bill.items.reduce((sum, i) => {
-                return sum + (i.price * i.qty);
-            }, 0);
-
-            await Product.findByIdAndUpdate(product._id, {
-                $inc: { stock: -qty }
-            });
         }
+
+        // ✅ ONLY calculate total
+        bill.totalAmount = bill.items.reduce(
+            (sum, i) => sum + i.price * i.qty,
+            0
+        );
 
         await bill.save();
 
@@ -171,14 +159,9 @@ router.put("/update-products", auth, async (req, res) => {
                 i => i.productId.toString() === productId.toString()
             );
 
-
+            // ❌ REMOVE ITEM
             if (qty === 0) {
                 if (existing) {
-                    // restore stock
-                    await Product.findByIdAndUpdate(productId, {
-                        $inc: { stock: existing.qty }
-                    });
-
                     bill.items = bill.items.filter(
                         i => i.productId.toString() !== productId.toString()
                     );
@@ -186,19 +169,12 @@ router.put("/update-products", auth, async (req, res) => {
                 continue;
             }
 
-
+            // ➕ UPDATE ITEM
             if (existing) {
-                const diff = qty - existing.qty;
-
                 existing.qty = qty;
-
-
-                await Product.findByIdAndUpdate(productId, {
-                    $inc: { stock: -diff }
-                });
-
-            } else {
-
+            }
+            // ➕ NEW ITEM
+            else {
                 bill.items.push({
                     productId: product._id,
                     name: product.name,
@@ -206,17 +182,14 @@ router.put("/update-products", auth, async (req, res) => {
                     image: product.images?.[0],
                     qty
                 });
-
-                await Product.findByIdAndUpdate(productId, {
-                    $inc: { stock: -qty }
-                });
             }
         }
 
-
-        bill.totalAmount = bill.items.reduce((sum, i) => {
-            return sum + i.price * i.qty;
-        }, 0);
+        // 💰 recalc total
+        bill.totalAmount = bill.items.reduce(
+            (sum, i) => sum + i.price * i.qty,
+            0
+        );
 
         await bill.save();
 
@@ -239,7 +212,6 @@ router.put("/update-qty", auth, async (req, res) => {
     try {
         const { billId, productId, action } = req.body;
 
-
         if (!billId || !productId || !action) {
             return res.status(400).json({
                 success: false,
@@ -254,7 +226,6 @@ router.put("/update-qty", auth, async (req, res) => {
             });
         }
 
-
         const bill = await Bill.findById(billId);
         if (!bill) {
             return res.status(404).json({
@@ -263,14 +234,12 @@ router.put("/update-qty", auth, async (req, res) => {
             });
         }
 
-
         if (bill.status !== "OPEN") {
             return res.status(400).json({
                 success: false,
                 message: "Cannot modify CLOSED or HOLD bill"
             });
         }
-
 
         const itemIndex = bill.items.findIndex(
             i => i.productId.toString() === productId
@@ -285,56 +254,21 @@ router.put("/update-qty", auth, async (req, res) => {
 
         const item = bill.items[itemIndex];
 
-
-        const product = await Product.findById(productId);
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: "Product not found"
-            });
-        }
-
-        let newStock;
-
-        // ➕ increase qty
+        // ➕ INCREASE QTY
         if (action === "inc") {
-            if (product.stock <= 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Out of stock"
-                });
-            }
-
             item.qty += 1;
-
-            const updatedProduct = await Product.findOneAndUpdate(
-                { _id: productId },
-                { $inc: { stock: -1 } },
-                { returnDocument: "after" }
-            );
-
-            newStock = updatedProduct.stock;
         }
 
-
+        // ➖ DECREASE QTY
         if (action === "dec") {
             item.qty -= 1;
-
-            const updatedProduct = await Product.findByIdAndUpdate(
-                productId,
-                { $inc: { stock: 1 } },
-                { new: true }
-            );
-
-            newStock = updatedProduct.stock;
-
 
             if (item.qty <= 0) {
                 bill.items.splice(itemIndex, 1);
             }
         }
 
-
+        // 💰 recalculate total
         bill.totalAmount = bill.items.reduce(
             (sum, i) => sum + i.price * i.qty,
             0
@@ -342,10 +276,8 @@ router.put("/update-qty", auth, async (req, res) => {
 
         await bill.save();
 
-
         const io = req.app.get("io");
         if (io) {
-            io.emit("stockUpdated", { productId, stock: newStock });
             io.emit("billUpdated", bill);
         }
 
@@ -378,37 +310,43 @@ router.post("/print/:id", auth, async (req, res) => {
             return res.status(404).json({ message: "Bill not found" });
         }
 
-
         if (bill.status === "CLOSED") {
             return res.status(400).json({
                 message: "Bill already closed"
             });
         }
 
-
-        if (bill.items.length === 0) {
+        if (!bill.items || bill.items.length === 0) {
             return res.status(400).json({
                 message: "Cannot print empty bill"
             });
         }
 
+        // 💰 always recalc total (safe)
         const totalAmount = bill.items.reduce(
             (sum, item) => sum + item.qty * item.price,
             0
         );
 
-
+        // 🔒 finalize bill only (NO STOCK LOGIC)
         bill.status = "CLOSED";
         bill.closedAt = new Date();
+        bill.totalAmount = totalAmount;
+
         await bill.save();
 
         const receipt = {
             shopName: "AR Traders",
-            date: new Date().toLocaleString(),
+            date: new Date().toLocaleString("en-IN"),
             billId: bill._id,
             items: bill.items,
             totalAmount
         };
+
+        const io = req.app.get("io");
+        if (io) {
+            io.emit("billUpdated", bill);
+        }
 
         res.json({
             success: true,
@@ -419,6 +357,7 @@ router.post("/print/:id", auth, async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
+
 
 router.post("/repeat-last-bill", auth, async (req, res) => {
     try {
@@ -446,48 +385,28 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
 
         const io = req.app.get("io");
 
+        // 🔁 copy items ONLY (no stock logic)
         for (const item of lastBill.items) {
-            const product = await Product.findById(item.productId);
-
-            if (!product) continue;
-
-
-            if (product.stock < item.qty) {
-                return res.status(400).json({
-                    message: `Not enough stock for ${product.name}`
-                });
-            }
-
 
             newBill.items.push({
-                productId: product._id,
-                name: product.name,
-                price: product.price,
-                image: product.images?.[0],
+                productId: item.productId,
+                name: item.name,
+                price: item.price,
+                image: item.image,
                 qty: item.qty
-            });
-
-
-            const updatedProduct = await Product.findByIdAndUpdate(
-                product._id,
-                { $inc: { stock: -item.qty } },
-                { new: true }
-            );
-
-            io.emit("stockUpdated", {
-                productId: product._id,
-                stock: updatedProduct.stock
             });
         }
 
-
+        // 💰 recalc total
         newBill.totalAmount = newBill.items.reduce((sum, i) => {
             return sum + i.price * i.qty;
         }, 0);
 
         await newBill.save();
 
-        io.emit("billUpdated", newBill);
+        if (io) {
+            io.emit("billUpdated", newBill);
+        }
 
         res.json({
             success: true,
@@ -500,7 +419,6 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
-
 
 router.post("/voice-add", auth, async (req, res) => {
 
@@ -553,7 +471,10 @@ router.post("/voice-add", auth, async (req, res) => {
                 });
             }
 
-            bill.totalAmount += product.price * vItem.qty;
+            bill.totalAmount = bill.items.reduce(
+                (sum, i) => sum + i.price * i.qty,
+                0
+            );
 
             await Product.findByIdAndUpdate(
                 product._id,
@@ -588,7 +509,6 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
             });
         }
 
-        // ✅ MISSING PART FIXED
         const bill = await Bill.findById(billId);
 
         if (!bill) {
@@ -597,6 +517,7 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
             });
         }
 
+        // 🧾 format date/time
         const createdDate = new Date(bill.createdAt);
 
         const formattedDate = createdDate.toLocaleDateString("en-IN");
@@ -670,9 +591,7 @@ router.get("/hold-orders", auth, async (req, res) => {
             itemsCount: bill.items.length,
             heldAt: bill.heldAt,
             note: bill.note || null,
-
-            // preview first item
-            preview: bill.items[0]?.name || "No items"
+            preview: bill.items?.[0]?.name || "No items"
         }));
 
         res.json({
@@ -687,7 +606,44 @@ router.get("/hold-orders", auth, async (req, res) => {
 });
 
 
+router.post("/sync-bills", auth, async (req, res) => {
+    try {
+        const { bills } = req.body;
 
+        if (!Array.isArray(bills)) {
+            return res.status(400).json({ message: "Invalid data" });
+        }
+
+        const result = [];
+
+        for (let b of bills) {
+
+            const bill = await Bill.findOneAndUpdate(
+                { localId: b.localId },
+                {
+                    $setOnInsert: {
+                        ...b,
+                        synced: true
+                    }
+                },
+                {
+                    upsert: true,
+                    new: true
+                }
+            );
+
+            result.push(bill);
+        }
+
+        res.json({
+            success: true,
+            syncedCount: result.length
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
 
 router.get("/top-products", auth, async (req, res) => {
     try {
@@ -732,9 +688,8 @@ router.get("/top-products", auth, async (req, res) => {
 
 router.get("/low-products", auth, async (req, res) => {
     try {
-        const max = Number(req.query.max) || 30;     // user input
-        const limit = Number(req.query.limit) || 30; // how many products
-
+        const max = Number(req.query.max) || 30;
+        const limit = Number(req.query.limit) || 30;
         const result = await Product.aggregate([
             {
                 $lookup: {
@@ -917,7 +872,7 @@ router.get("/sales/month", async (req, res) => {
             success: true,
             data: {
                 totalSales: stats.totalSales,
-                totalBills: stats.count,
+                totalBills: stats.totalBills,
                 from: toIST(firstDay),
                 to: toIST(lastDay),
             }
@@ -935,11 +890,11 @@ router.get("/sales/year", async (req, res) => {
     try {
         const now = new Date();
 
-        // Start of year
+
         const firstDay = new Date(now.getFullYear(), 0, 1);
         firstDay.setHours(0, 0, 0, 0);
 
-        // End of today (or full year option below)
+
         const lastDay = new Date();
         lastDay.setHours(23, 59, 59, 999);
 

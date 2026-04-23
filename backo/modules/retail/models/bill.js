@@ -25,6 +25,21 @@ const billSchema = new mongoose.Schema({
         default: 0
     },
 
+    localId: {
+        type: String,
+        unique: true
+    },
+
+    synced: {
+        type: Boolean,
+        default: false
+    },
+
+    taxAmount: {
+        type: Number,
+        default: 0
+    },
+
     status: {
         type: String,
         enum: ["OPEN", "HOLD", "CLOSED"],
