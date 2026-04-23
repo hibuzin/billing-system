@@ -7,6 +7,6 @@ const billRoutes = require("./routes/bill");
 
 router.use("/auth", authRoutes);
 router.use("/products", productRoutes);
-router.use("/bills", billRoutes);
+router.use("/bill", billRoutes);
 
 module.exports = router;

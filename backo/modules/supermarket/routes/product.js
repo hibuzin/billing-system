@@ -18,7 +18,7 @@ router.post("/", auth, async (req, res) => {
             });
         }
 
-        
+
         const count = Number(barcodeCount) || 1;
 
         if (count <= 0) {
@@ -27,17 +27,18 @@ router.post("/", auth, async (req, res) => {
             });
         }
 
-        
+
         const barcodes = [];
+
         for (let i = 0; i < count; i++) {
-            barcodes.push(Date.now().toString() + i);
+            barcodes.push(Date.now().toString() + Math.floor(Math.random() * 1000) + i);
         }
 
         const product = new Product({
             name,
             price: Number(price),
             stock: Number(stock),
-            barcodes // array instead of single
+            barcodes
         });
 
         await product.save();
@@ -56,12 +57,51 @@ router.post("/", auth, async (req, res) => {
 
 
 
-router.get("/", async (req, res) => {
+router.get("/", auth, async (req, res) => {
     try {
-        const products = await Product.find();
-        res.json(products);
+        const products = await Product.find().sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            count: products.length,
+            products
+        });
+
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Get Products Error:", err);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: err.message
+        });
+    }
+});
+
+router.get("/:id", auth, async (req, res) => {
+    try {
+        const product = await Product.findById(req.params.id);
+
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            product
+        });
+
+    } catch (err) {
+        console.error("Get Product Error:", err);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: err.message
+        });
     }
 });
 
@@ -183,24 +223,38 @@ router.get("/low-stock", async (req, res) => {
 });
 
 
-router.get("/barcode/:code", async (req, res) => {
+router.get("/barcode/:code", auth, async (req, res) => {
     try {
-        const png = await bwipjs.toBuffer({
-            bcid: "code128",
-            text: req.params.code,
-            scale: 3,
-            height: 10,
-            includetext: true,
-            textxalign: "center",
+        const { code } = req.params;
+
+        // 🔍 find product by barcode inside array
+        const product = await Product.findOne({
+            barcodes: code
         });
 
-        res.set("Content-Type", "image/png");
-        res.send(png);
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Barcode not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            product
+        });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Barcode Search Error:", err);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: err.message
+        });
     }
 });
+
 
 router.get("/today/sales", async (req, res) => {
     try {

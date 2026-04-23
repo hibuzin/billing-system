@@ -10,12 +10,10 @@ const productSchema = new mongoose.Schema({
         type: Number,
         required: true,
     },
-    barcodes: [
-        {
-            type: String,
-            required: true
-        }
-    ],
+    barcodes: {
+        type: [String],
+        default: []
+    },
     stock: {
         type: Number,
         default: 0,

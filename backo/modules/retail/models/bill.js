@@ -14,6 +14,11 @@ const billSchema = new mongoose.Schema({
             image: String
         }
     ],
+
+    invoiceNumber: {
+        type: Number,
+        unique: true
+    },
     totalAmount: {
         type: Number,
         required: true,

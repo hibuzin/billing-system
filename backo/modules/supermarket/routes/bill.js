@@ -305,8 +305,8 @@ router.get("/top-products", auth, async (req, res) => {
 
 router.get("/low-products", auth, async (req, res) => {
     try {
-        const max = Number(req.query.max) || 30;     // user input
-        const limit = Number(req.query.limit) || 30; // how many products
+        const max = Number(req.query.max) || 30;     
+        const limit = Number(req.query.limit) || 30; 
 
         const result = await Product.aggregate([
             {

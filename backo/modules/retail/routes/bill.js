@@ -588,6 +588,7 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
             });
         }
 
+        // ✅ MISSING PART FIXED
         const bill = await Bill.findById(billId);
 
         if (!bill) {
@@ -596,9 +597,16 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
             });
         }
 
+        const createdDate = new Date(bill.createdAt);
+
+        const formattedDate = createdDate.toLocaleDateString("en-IN");
+        const formattedTime = createdDate.toLocaleTimeString("en-IN");
+
         res.json({
             success: true,
-            bill
+            bill,
+            date: formattedDate,
+            time: formattedTime
         });
 
     } catch (err) {
