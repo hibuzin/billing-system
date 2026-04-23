@@ -98,7 +98,7 @@ router.post("/add-products", auth, async (req, res) => {
             }
         }
 
-        // ✅ ONLY calculate total
+        
         bill.totalAmount = bill.items.reduce(
             (sum, i) => sum + i.price * i.qty,
             0
@@ -159,7 +159,7 @@ router.put("/update-products", auth, async (req, res) => {
                 i => i.productId.toString() === productId.toString()
             );
 
-            // ❌ REMOVE ITEM
+            
             if (qty === 0) {
                 if (existing) {
                     bill.items = bill.items.filter(
@@ -169,11 +169,11 @@ router.put("/update-products", auth, async (req, res) => {
                 continue;
             }
 
-            // ➕ UPDATE ITEM
+            
             if (existing) {
                 existing.qty = qty;
             }
-            // ➕ NEW ITEM
+           
             else {
                 bill.items.push({
                     productId: product._id,
@@ -185,7 +185,7 @@ router.put("/update-products", auth, async (req, res) => {
             }
         }
 
-        // 💰 recalc total
+      
         bill.totalAmount = bill.items.reduce(
             (sum, i) => sum + i.price * i.qty,
             0
@@ -322,13 +322,12 @@ router.post("/print/:id", auth, async (req, res) => {
             });
         }
 
-        // 💰 always recalc total (safe)
         const totalAmount = bill.items.reduce(
             (sum, item) => sum + item.qty * item.price,
             0
         );
 
-        // 🔒 finalize bill only (NO STOCK LOGIC)
+
         bill.status = "CLOSED";
         bill.closedAt = new Date();
         bill.totalAmount = totalAmount;
@@ -348,9 +347,16 @@ router.post("/print/:id", auth, async (req, res) => {
             io.emit("billUpdated", bill);
         }
 
+        const createdDate = new Date(bill.createdAt);
+
+        const formattedDate = createdDate.toLocaleDateString("en-IN"); // 23/04/2026
+        const formattedTime = createdDate.toLocaleTimeString("en-IN"); // 10:30:25 AM
+
         res.json({
             success: true,
-            receipt
+            bill,
+            date: formattedDate,
+            time: formattedTime
         });
 
     } catch (err) {
@@ -385,7 +391,7 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
 
         const io = req.app.get("io");
 
-        // 🔁 copy items ONLY (no stock logic)
+       
         for (const item of lastBill.items) {
 
             newBill.items.push({
@@ -397,7 +403,7 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
             });
         }
 
-        // 💰 recalc total
+        
         newBill.totalAmount = newBill.items.reduce((sum, i) => {
             return sum + i.price * i.qty;
         }, 0);
@@ -517,7 +523,7 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
             });
         }
 
-        // 🧾 format date/time
+       
         const createdDate = new Date(bill.createdAt);
 
         const formattedDate = createdDate.toLocaleDateString("en-IN");
