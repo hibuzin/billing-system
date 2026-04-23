@@ -98,7 +98,7 @@ router.post("/add-products", auth, async (req, res) => {
             }
         }
 
-        
+
         bill.totalAmount = bill.items.reduce(
             (sum, i) => sum + i.price * i.qty,
             0
@@ -159,7 +159,7 @@ router.put("/update-products", auth, async (req, res) => {
                 i => i.productId.toString() === productId.toString()
             );
 
-            
+
             if (qty === 0) {
                 if (existing) {
                     bill.items = bill.items.filter(
@@ -169,11 +169,11 @@ router.put("/update-products", auth, async (req, res) => {
                 continue;
             }
 
-            
+
             if (existing) {
                 existing.qty = qty;
             }
-           
+
             else {
                 bill.items.push({
                     productId: product._id,
@@ -185,7 +185,7 @@ router.put("/update-products", auth, async (req, res) => {
             }
         }
 
-      
+
         bill.totalAmount = bill.items.reduce(
             (sum, i) => sum + i.price * i.qty,
             0
@@ -349,9 +349,15 @@ router.post("/print/:id", auth, async (req, res) => {
 
         const createdDate = new Date(bill.createdAt);
 
-        const formattedDate = createdDate.toLocaleDateString("en-IN"); // 23/04/2026
-        const formattedTime = createdDate.toLocaleTimeString("en-IN"); // 10:30:25 AM
+        const formattedDate = createdDate.toLocaleDateString("en-IN", {
+            timeZone: "Asia/Kolkata"
+        });
 
+        const formattedTime = createdDate.toLocaleTimeString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            hour12: true
+        });
+        
         res.json({
             success: true,
             bill,
@@ -391,7 +397,7 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
 
         const io = req.app.get("io");
 
-       
+
         for (const item of lastBill.items) {
 
             newBill.items.push({
@@ -403,7 +409,7 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
             });
         }
 
-        
+
         newBill.totalAmount = newBill.items.reduce((sum, i) => {
             return sum + i.price * i.qty;
         }, 0);
@@ -523,7 +529,7 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
             });
         }
 
-       
+
         const createdDate = new Date(bill.createdAt);
 
         const formattedDate = createdDate.toLocaleDateString("en-IN");
