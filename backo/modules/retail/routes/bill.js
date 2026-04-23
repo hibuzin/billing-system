@@ -357,7 +357,7 @@ router.post("/print/:id", auth, async (req, res) => {
             timeZone: "Asia/Kolkata",
             hour12: true
         });
-        
+
         res.json({
             success: true,
             bill,
@@ -532,9 +532,16 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
 
         const createdDate = new Date(bill.createdAt);
 
-        const formattedDate = createdDate.toLocaleDateString("en-IN");
-        const formattedTime = createdDate.toLocaleTimeString("en-IN");
+        const formattedDate = createdDate.toLocaleDateString("en-IN", {
+            timeZone: "Asia/Kolkata"
+        });
 
+        const formattedTime = createdDate.toLocaleTimeString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            hour12: true
+        });
+
+        
         res.json({
             success: true,
             bill,
