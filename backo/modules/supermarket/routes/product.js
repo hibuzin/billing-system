@@ -8,9 +8,10 @@ const { v4: uuidv4 } = require("uuid");
 const auth = require("../../../middleware/auth");
 
 
+
 router.post("/", auth, async (req, res) => {
     try {
-        const { name, price, stock, barcodeCount } = req.body;
+        const { name, price, stock, barcodeCount, gstRate } = req.body;
 
         if (!name || price == null || stock == null) {
             return res.status(400).json({
@@ -18,6 +19,15 @@ router.post("/", auth, async (req, res) => {
             });
         }
 
+
+        const allowedGST = [0, 5, 8, 12, 18];
+        const finalGST = gstRate ?? 18;
+
+        if (!allowedGST.includes(finalGST)) {
+            return res.status(400).json({
+                message: "Invalid GST rate (0, 5, 8, 12, 18 allowed)"
+            });
+        }
 
         const count = Number(barcodeCount) || 1;
 
@@ -27,17 +37,19 @@ router.post("/", auth, async (req, res) => {
             });
         }
 
-
         const barcodes = [];
 
         for (let i = 0; i < count; i++) {
-            barcodes.push(Date.now().toString() + Math.floor(Math.random() * 1000) + i);
+            barcodes.push(
+                Date.now().toString() + Math.floor(Math.random() * 1000) + i
+            );
         }
 
         const product = new Product({
             name,
             price: Number(price),
             stock: Number(stock),
+            gstRate: finalGST,
             barcodes
         });
 
@@ -106,70 +118,97 @@ router.get("/:id", auth, async (req, res) => {
 });
 
 
-router.get("/scan/:barcode", async (req, res) => {
+// GET product by barcode
+router.get("/scan/:barcode", auth, async (req, res) => {
     try {
+        const { barcode } = req.params;
+
         const product = await Product.findOne({
-            barcode: req.params.barcode,
+            barcodes: barcode
         });
 
         if (!product) {
-            return res.status(404).json({ message: "Not found" });
+            return res.status(404).json({
+                success: false,
+                message: "Product not found"
+            });
         }
 
-        res.json(product);
+        return res.json({
+            success: true,
+            product
+        });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.log(err);
+        res.status(500).json({ message: "Server error" });
     }
 });
 
 
 
-
-
 router.put("/:id", auth, async (req, res) => {
     try {
-        console.log(req.file);
-        const { name, price, stock } = req.body || {};
+        const { name, price, stock, gstRate, barcodeCount } = req.body;
 
-        if (price !== undefined && price < 0) {
-            return res.status(400).json({
-                message: "Price cannot be negative"
-            });
-        }
-
-        if (stock !== undefined && stock < 0) {
-            return res.status(400).json({
-                message: "Stock cannot be negative"
-            });
-        }
-
-        const updateData = {};
-        if (name) updateData.name = name;
-        if (price !== undefined) updateData.price = Number(price);
-        if (stock !== undefined) updateData.stock = Number(stock);
-
-
-
-        const product = await Product.findByIdAndUpdate(
-            req.params.id,
-            updateData,
-            { returnDocument: "after", runValidators: true }
-        );
+        const product = await Product.findById(req.params.id);
 
         if (!product) {
             return res.status(404).json({
+                success: false,
                 message: "Product not found"
             });
         }
 
+
+        const allowedGST = [0, 5, 8, 12, 18];
+        if (gstRate !== undefined && !allowedGST.includes(Number(gstRate))) {
+            return res.status(400).json({
+                message: "Invalid GST rate (0, 5, 8, 12, 18 allowed)"
+            });
+        }
+
+
+        if (name !== undefined) product.name = name;
+        if (price !== undefined) product.price = Number(price);
+        if (stock !== undefined) product.stock = Number(stock);
+        if (gstRate !== undefined) product.gstRate = Number(gstRate);
+
+
+        if (barcodeCount !== undefined) {
+            const count = Number(barcodeCount);
+
+            if (count <= 0) {
+                return res.status(400).json({
+                    message: "barcodeCount must be greater than 0"
+                });
+            }
+
+            const barcodes = [];
+
+            for (let i = 0; i < count; i++) {
+                barcodes.push(
+                    Date.now().toString() +
+                    Math.floor(Math.random() * 1000) +
+                    i
+                );
+            }
+
+            product.barcodes = barcodes;
+        }
+
+        await product.save();
+
         res.json({
+            success: true,
             message: "Product updated successfully",
             product
         });
 
     } catch (err) {
+        console.error("Update Error:", err);
         res.status(500).json({
+            success: false,
             message: "Update failed",
             error: err.message
         });
