@@ -54,12 +54,16 @@ router.post("/add-products", auth, async (req, res) => {
             bill = new Bill({
                 items: [],
                 totalAmount: 0,
-                status: "OPEN"
+                status: "OPEN",
+                userId: req.user.userId
             });
 
             await bill.save();
         } else {
-            bill = await Bill.findById(billId);
+            bill = await Bill.findOne({
+                _id: billId,
+                userId: req.user.userId
+            });
 
             if (!bill) {
                 return res.status(404).json({ message: "Bill not found" });
@@ -133,7 +137,10 @@ router.put("/update-products", auth, async (req, res) => {
             return res.status(400).json({ message: "items array required" });
         }
 
-        const bill = await Bill.findById(billId);
+        const bill = await Bill.findOne({
+            _id: billId,
+            userId: req.user.userId
+        });
 
         if (!bill) {
             return res.status(404).json({ message: "Bill not found" });
@@ -226,7 +233,12 @@ router.put("/update-qty", auth, async (req, res) => {
             });
         }
 
-        const bill = await Bill.findById(billId);
+        const bill = await Bill.findOne({
+            _id: billId,
+            userId: req.user.userId
+        });
+
+
         if (!bill) {
             return res.status(404).json({
                 success: false,
@@ -304,7 +316,10 @@ router.put("/update-qty", auth, async (req, res) => {
 
 router.post("/print/:id", auth, async (req, res) => {
     try {
-        const bill = await Bill.findById(req.params.id);
+        const bill = await Bill.findOne({
+            _id: req.params.id,
+            userId: req.user.userId
+        });
 
         if (!bill) {
             return res.status(404).json({ message: "Bill not found" });
@@ -374,8 +389,10 @@ router.post("/print/:id", auth, async (req, res) => {
 router.post("/repeat-last-bill", auth, async (req, res) => {
     try {
 
-        const lastBill = await Bill.findOne({ status: "CLOSED" })
-            .sort({ createdAt: -1 });
+        const lastBill = await Bill.findOne({
+            status: "CLOSED",
+            userId: req.user.userId
+        }).sort({ createdAt: -1 });
 
         if (!lastBill) {
             return res.status(404).json({
@@ -392,7 +409,8 @@ router.post("/repeat-last-bill", auth, async (req, res) => {
         const newBill = new Bill({
             items: [],
             totalAmount: 0,
-            status: "OPEN"
+            status: "OPEN",
+            userId: req.user.userId
         });
 
         const io = req.app.get("io");
@@ -444,7 +462,11 @@ router.post("/voice-add", auth, async (req, res) => {
             });
         }
 
-        const bill = await Bill.findById(billId);
+        const bill = await Bill.findOne({
+            _id: billId,
+            userId: req.user.userId
+        });
+
         if (!bill) return res.status(404).json({ message: "Bill not found" });
 
 
@@ -455,7 +477,8 @@ router.post("/voice-add", auth, async (req, res) => {
         const voiceItems = parseVoice(englishText);
         for (const vItem of voiceItems) {
             const product = await Product.findOne({
-                name: { $regex: vItem.name, $options: "i" }
+                name: { $regex: vItem.name, $options: "i" },
+                userId: req.user.userId
             });
 
             if (!product) continue;
@@ -521,7 +544,10 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
             });
         }
 
-        const bill = await Bill.findById(billId);
+        const bill = await Bill.findOne({
+            _id: billId,
+            userId: req.user.userId
+        });
 
         if (!bill) {
             return res.status(404).json({
@@ -541,7 +567,7 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
             hour12: true
         });
 
-        
+
         res.json({
             success: true,
             bill,
@@ -556,6 +582,7 @@ router.get("/get-bill/:billId", auth, async (req, res) => {
     }
 });
 
+
 router.post("/hold", auth, async (req, res) => {
     try {
         const { billId, note } = req.body;
@@ -564,10 +591,13 @@ router.post("/hold", auth, async (req, res) => {
             return res.status(400).json({ message: "billId required" });
         }
 
-        const bill = await Bill.findById(billId);
+        const bill = await Bill.findOne({
+            _id: billId,
+            userId: req.user.userId
+        });
 
         if (!bill) {
-            return res.status(404).json({ message: "Bill not found" });
+            return res.status(404).json({ message: "Bill not found or not authorized" });
         }
 
         if (bill.status !== "OPEN") {
@@ -601,7 +631,7 @@ router.post("/hold", auth, async (req, res) => {
 
 router.get("/hold-orders", auth, async (req, res) => {
     try {
-        const bills = await Bill.find({ status: "HOLD" })
+        const bills = await Bill.find({ status: "HOLD", userId: req.user.userId })
             .sort({ heldAt: -1 });
 
         const formatted = bills.map(bill => ({
