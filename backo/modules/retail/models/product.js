@@ -14,6 +14,12 @@ const productSchema = new mongoose.Schema({
         type: Number,
         default: 0,
     },
+
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
     images: {
         type: [String],
         default: []

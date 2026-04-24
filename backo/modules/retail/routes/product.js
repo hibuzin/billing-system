@@ -45,7 +45,8 @@ router.post("/", auth, upload.array("images"), async (req, res) => {
             name,
             price: Number(price),
             stock: Number(stock),
-            images: imageUrls
+            images: imageUrls,
+            userId: req.user.userId
         });
 
         await product.save();
@@ -125,12 +126,23 @@ router.get("/low-stock", async (req, res) => {
 });
 
 
-router.get("/", async (req, res) => {
+router.get("/", auth, async (req, res) => {
     try {
-        const products = await Product.find();
-        res.json(products);
+        const products = await Product.find({
+            userId: req.user.userId
+        });
+        console.log("TOKEN userId:", req.user.userId);
+
+        res.json({
+            success: true,
+            data: products
+        });
+
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({
+            success: false,
+            message: err.message
+        });
     }
 });
 
@@ -138,23 +150,27 @@ router.get("/", async (req, res) => {
 
 router.get("/:id", auth, async (req, res) => {
     try {
-        const product = await Product.findById(req.params.id);
+        const product = await Product.findOne({
+            _id: req.params.id,
+            userId: req.user.userId
+        });
 
         if (!product) {
             return res.status(404).json({
+                success: false,
                 message: "Product not found"
             });
         }
 
         res.json({
             success: true,
-            product
+            data: product
         });
 
     } catch (err) {
         res.status(500).json({
-            message: "Error fetching product",
-            error: err.message
+            success: false,
+            message: err.message
         });
     }
 });
