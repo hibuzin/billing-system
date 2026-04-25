@@ -629,6 +629,67 @@ router.post("/hold", auth, async (req, res) => {
 });
 
 
+router.put("/hold/:billId", auth, async (req, res) => {
+    try {
+        const { items, note } = req.body;
+
+        if (!Array.isArray(items)) {
+            return res.status(400).json({ message: "Items required" });
+        }
+
+        const bill = await Bill.findOne({
+            _id: req.params.billId,
+            userId: req.user.userId,
+            status: "HOLD"
+        });
+
+        if (!bill) {
+            return res.status(404).json({ message: "HOLD bill not found" });
+        }
+
+        let totalAmount = 0;
+        const updatedItems = [];
+
+        for (let item of items) {
+            if (!item.productId || item.qty <= 0) continue;
+
+            const product = await Product.findById(item.productId);
+            if (!product) continue;
+
+            const itemTotal = product.price * item.qty;
+            totalAmount += itemTotal;
+
+            updatedItems.push({
+                productId: product._id,
+                name: product.name,
+                price: product.price,
+                qty: item.qty,
+                image: product.images?.[0] || null,
+                total: itemTotal
+            });
+        }
+
+        bill.items = updatedItems;
+        bill.totalAmount = totalAmount;
+
+        if (note !== undefined) {
+            bill.note = note;
+        }
+
+        await bill.save();
+
+        res.json({
+            success: true,
+            message: "HOLD bill updated",
+            bill
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
 router.get("/hold-orders", auth, async (req, res) => {
     try {
         const bills = await Bill.find({ status: "HOLD", userId: req.user.userId })
@@ -647,6 +708,34 @@ router.get("/hold-orders", auth, async (req, res) => {
             success: true,
             count: formatted.length,
             bills: formatted
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.post("/resume/:billId", auth, async (req, res) => {
+    try {
+        const bill = await Bill.findOne({
+            _id: req.params.billId,
+            userId: req.user.userId,
+            status: "HOLD"
+        });
+
+        if (!bill) {
+            return res.status(404).json({ message: "HOLD bill not found" });
+        }
+
+        bill.status = "OPEN";
+        bill.heldAt = null;
+
+        await bill.save();
+
+        res.json({
+            success: true,
+            message: "Bill resumed",
+            bill
         });
 
     } catch (err) {
@@ -750,7 +839,7 @@ router.get("/low-products", auth, async (req, res) => {
 
         const result = await Product.aggregate([
 
-            // ✅ 1. Filter products of this user
+            
             {
                 $match: {
                     userId: userId

@@ -135,7 +135,7 @@ router.get("/", auth, async (req, res) => {
 
         res.json({
             success: true,
-            data: products
+            products : products
         });
 
     } catch (err) {
