@@ -699,6 +699,12 @@ router.get("/top-products", auth, async (req, res) => {
         const min = Number(req.query.min) || 30;
 
         const result = await Bill.aggregate([
+            {
+                $match: {
+                    userId: new mongoose.Types.ObjectId(req.user.userId)
+                }
+            },
+
             { $unwind: "$items" },
 
             {
@@ -739,13 +745,33 @@ router.get("/low-products", auth, async (req, res) => {
     try {
         const max = Number(req.query.max) || 30;
         const limit = Number(req.query.limit) || 30;
+
+        const userId = new mongoose.Types.ObjectId(req.user.userId);
+
         const result = await Product.aggregate([
+
+            // ✅ 1. Filter products of this user
+            {
+                $match: {
+                    userId: userId
+                }
+            },
+
             {
                 $lookup: {
                     from: "bills",
                     let: { productId: { $toString: "$_id" } },
                     pipeline: [
+
+                        // ✅ 2. Filter bills of this user
+                        {
+                            $match: {
+                                userId: userId
+                            }
+                        },
+
                         { $unwind: "$items" },
+
                         {
                             $match: {
                                 $expr: {
@@ -765,7 +791,6 @@ router.get("/low-products", auth, async (req, res) => {
                     }
                 }
             },
-
 
             {
                 $match: {
@@ -797,7 +822,7 @@ router.get("/low-products", auth, async (req, res) => {
 });
 
 
-router.get("/sales/today", async (req, res) => {
+router.get("/sales/today", auth, async (req, res) => {
     try {
         const start = new Date();
         start.setHours(0, 0, 0, 0);
@@ -808,8 +833,10 @@ router.get("/sales/today", async (req, res) => {
         const result = await Bill.aggregate([
             {
                 $match: {
+                    userId: userId,
                     createdAt: { $gte: start, $lte: end }
                 }
+
             },
             {
                 $group: {
@@ -835,7 +862,7 @@ router.get("/sales/today", async (req, res) => {
     }
 });
 
-router.get("/sales/week", async (req, res) => {
+router.get("/sales/week", auth, async (req, res) => {
     try {
         const now = new Date();
 
@@ -849,7 +876,8 @@ router.get("/sales/week", async (req, res) => {
         const result = await Bill.aggregate([
             {
                 $match: {
-                    createdAt: { $gte: firstDay, $lte: lastDay }
+                    userId: userId,
+                    createdAt: { $gte: start, $lte: end }
                 }
             },
             {
@@ -883,11 +911,11 @@ router.get("/sales/week", async (req, res) => {
     }
 });
 
-router.get("/sales/month", async (req, res) => {
+router.get("/sales/month", auth, async (req, res) => {
     try {
         const now = new Date();
 
-        // Start of month
+        
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
         firstDay.setHours(0, 0, 0, 0);
 
@@ -898,7 +926,8 @@ router.get("/sales/month", async (req, res) => {
         const result = await Bill.aggregate([
             {
                 $match: {
-                    createdAt: { $gte: firstDay, $lte: lastDay }
+                    userId: userId, 
+                    createdAt: { $gte: start, $lte: end }
                 }
             },
             {
@@ -935,7 +964,7 @@ router.get("/sales/month", async (req, res) => {
     }
 });
 
-router.get("/sales/year", async (req, res) => {
+router.get("/sales/year", auth, async (req, res) => {
     try {
         const now = new Date();
 
@@ -950,6 +979,7 @@ router.get("/sales/year", async (req, res) => {
         const result = await Bill.aggregate([
             {
                 $match: {
+                    userId: userId, 
                     createdAt: { $gte: firstDay, $lte: lastDay }
                 }
             },
