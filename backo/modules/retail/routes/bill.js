@@ -813,7 +813,7 @@ router.get("/low-products", auth, async (req, res) => {
 
         const result = await Product.aggregate([
 
-            
+
             {
                 $match: {
                     userId: userId
@@ -896,7 +896,7 @@ router.get("/sales/today", auth, async (req, res) => {
         const result = await Bill.aggregate([
             {
                 $match: {
-                     userId: req.user.userId,
+                    userId: req.user.userId,
                     createdAt: { $gte: start, $lte: end }
                 }
 
@@ -940,7 +940,7 @@ router.get("/sales/week", auth, async (req, res) => {
             {
                 $match: {
                     userId: req.user.userId,
-                    createdAt: { $gte: start, $lte: end }
+                    createdAt: { $gte: firstDay, $lte: lastDay } // ✅ FIXED
                 }
             },
             {
@@ -978,7 +978,7 @@ router.get("/sales/month", auth, async (req, res) => {
     try {
         const now = new Date();
 
-        
+
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
         firstDay.setHours(0, 0, 0, 0);
 
@@ -990,7 +990,7 @@ router.get("/sales/month", auth, async (req, res) => {
             {
                 $match: {
                     userId: req.user.userId,
-                    createdAt: { $gte: start, $lte: end }
+                    createdAt: { $gte: firstDay, $lte: lastDay }
                 }
             },
             {
@@ -1014,8 +1014,7 @@ router.get("/sales/month", auth, async (req, res) => {
             data: {
                 totalSales: stats.totalSales,
                 totalBills: stats.totalBills,
-                from: toIST(firstDay),
-                to: toIST(lastDay),
+                
             }
         });
 
@@ -1066,9 +1065,9 @@ router.get("/sales/year", auth, async (req, res) => {
             success: true,
             data: {
                 totalSales: stats.totalSales,
+                 totalBills: stats.totalBills,
                 totalBills: stats.count,
-                from: toIST(firstDay),
-                to: toIST(lastDay),
+               
             }
         });
 
