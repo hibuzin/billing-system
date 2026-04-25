@@ -2,6 +2,13 @@
 const mongoose = require("mongoose");
 
 const productSchema = new mongoose.Schema({
+
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
+
     name: {
         type: String,
         required: true,
@@ -10,6 +17,13 @@ const productSchema = new mongoose.Schema({
         type: Number,
         required: true,
     },
+    
+    barcode: {
+        type: String,
+        required: true,
+        unique: true
+    },
+
     barcodes: {
         type: [String],
         default: []

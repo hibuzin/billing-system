@@ -15,45 +15,101 @@ router.post("/scan", auth, async (req, res) => {
             return res.status(400).json({ message: "barcode required" });
         }
 
-        const bill = await getActiveBill(req.user._id);
 
-        const product = await Product.findOne({ barcode });
+        const product = await Product.findOne({
+            userId: req.user.userId,
+            $or: [
+                { barcode: barcode },
+                { barcodes: barcode }
+            ]
+        });
 
         if (!product) {
             return res.status(404).json({ message: "Product not found" });
         }
 
-        if (product.stock <= 0) {
-            return res.status(400).json({ message: "Out of stock" });
+
+        let bill = await Bill.findOne({
+            userId: req.user.userId,
+            status: "OPEN"
+        });
+
+        if (!bill) {
+            bill = await Bill.create({
+                userId: req.user.userId,
+                items: [],
+                subtotal: 0,
+                totalAmount: 0,
+                status: "OPEN"
+            });
         }
 
-        // reduce stock
-        product.stock -= 1;
-        await product.save();
 
-        const item = bill.items.find(i => i.barcode === barcode);
+        const existingItem = bill.items.find(
+            i => i.productId.toString() === product._id.toString()
+        );
 
-        if (item) {
-            item.qty += 1;
+        if (existingItem) {
+            existingItem.qty += 1;
         } else {
             bill.items.push({
                 productId: product._id,
                 name: product.name,
                 price: product.price,
                 qty: 1,
-                barcode
+                barcode // optional (for history)
             });
         }
 
-        // totals
-        bill.subtotal = bill.items.reduce((s, i) => s + i.qty * i.price, 0);
+
+        bill.subtotal = bill.items.reduce(
+            (sum, i) => sum + i.qty * i.price,
+            0
+        );
+
         bill.totalAmount = bill.subtotal;
 
         await bill.save();
 
         res.json({
-            message: "Item added",
-            bill
+            success: true,
+            bill: {
+                ...bill.toObject(),
+                billId: bill._id
+            }
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.post("/:id/add-barcode", auth, async (req, res) => {
+    try {
+        const { barcode } = req.body;
+
+        if (!barcode) {
+            return res.status(400).json({ message: "barcode required" });
+        }
+
+        const product = await Product.findOneAndUpdate(
+            {
+                _id: req.params.id,
+                userId: req.user.userId
+            },
+            {
+                $addToSet: { barcodes: barcode } // avoids duplicates
+            },
+            { new: true }
+        );
+
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
+        res.json({
+            success: true,
+            product
         });
 
     } catch (err) {

@@ -19,24 +19,21 @@ router.post("/", auth, async (req, res) => {
             });
         }
 
-
         const allowedGST = [0, 5, 8, 12, 18];
         const finalGST = gstRate ?? 18;
 
         if (!allowedGST.includes(finalGST)) {
             return res.status(400).json({
-                message: "Invalid GST rate (0, 5, 8, 12, 18 allowed)"
+                message: "Invalid GST rate"
             });
         }
 
-        const count = Number(barcodeCount) || 1;
+        // 🔹 Generate primary barcode
+        const barcode =
+            Date.now().toString() + Math.floor(Math.random() * 1000);
 
-        if (count <= 0) {
-            return res.status(400).json({
-                message: "barcodeCount must be greater than 0"
-            });
-        }
-
+        // 🔹 Generate extra barcodes
+        const count = Number(barcodeCount) || 0;
         const barcodes = [];
 
         for (let i = 0; i < count; i++) {
@@ -46,23 +43,23 @@ router.post("/", auth, async (req, res) => {
         }
 
         const product = new Product({
+            userId: req.user.userId,
             name,
             price: Number(price),
             stock: Number(stock),
             gstRate: finalGST,
-            barcodes
+            barcode,   // ✅ main
+            barcodes   // ✅ extra
         });
 
         await product.save();
 
         res.json({
             success: true,
-            totalBarcodes: barcodes.length,
             product
         });
 
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: err.message });
     }
 });

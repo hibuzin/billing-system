@@ -4,7 +4,7 @@ const billSchema = new mongoose.Schema({
     billNumber: {
         type: String,
         unique: true,
-        required: true
+       required: false
     },
 
     userId: {

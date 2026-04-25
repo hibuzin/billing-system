@@ -715,33 +715,7 @@ router.get("/hold-orders", auth, async (req, res) => {
     }
 });
 
-router.post("/resume/:billId", auth, async (req, res) => {
-    try {
-        const bill = await Bill.findOne({
-            _id: req.params.billId,
-            userId: req.user.userId,
-            status: "HOLD"
-        });
 
-        if (!bill) {
-            return res.status(404).json({ message: "HOLD bill not found" });
-        }
-
-        bill.status = "OPEN";
-        bill.heldAt = null;
-
-        await bill.save();
-
-        res.json({
-            success: true,
-            message: "Bill resumed",
-            bill
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
 
 
 router.post("/sync-bills", auth, async (req, res) => {
@@ -922,7 +896,7 @@ router.get("/sales/today", auth, async (req, res) => {
         const result = await Bill.aggregate([
             {
                 $match: {
-                    userId: userId,
+                     userId: req.user.userId,
                     createdAt: { $gte: start, $lte: end }
                 }
 
@@ -965,7 +939,7 @@ router.get("/sales/week", auth, async (req, res) => {
         const result = await Bill.aggregate([
             {
                 $match: {
-                    userId: userId,
+                    userId: req.user.userId,
                     createdAt: { $gte: start, $lte: end }
                 }
             },
@@ -1015,7 +989,7 @@ router.get("/sales/month", auth, async (req, res) => {
         const result = await Bill.aggregate([
             {
                 $match: {
-                    userId: userId, 
+                    userId: req.user.userId,
                     createdAt: { $gte: start, $lte: end }
                 }
             },
@@ -1068,7 +1042,7 @@ router.get("/sales/year", auth, async (req, res) => {
         const result = await Bill.aggregate([
             {
                 $match: {
-                    userId: userId, 
+                    userId: req.user.userId,
                     createdAt: { $gte: firstDay, $lte: lastDay }
                 }
             },
